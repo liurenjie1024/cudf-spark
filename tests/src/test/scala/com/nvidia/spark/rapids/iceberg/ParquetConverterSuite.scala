@@ -1,9 +1,16 @@
 package com.nvidia.spark.rapids.iceberg
 
+import scala.util.Using
+
 import com.nvidia.spark.rapids.iceberg.parquet.converter.FromIcebergShaded.unshade
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.Path
 import org.apache.hadoop.shaded.org.apache.commons.math3.stat.descriptive.rank.Percentile
+import org.apache.iceberg.shaded.org.apache.parquet.hadoop.ParquetFileReader
+import org.apache.iceberg.shaded.org.apache.parquet.hadoop.util.HadoopInputFile
 import org.apache.iceberg.shaded.org.apache.parquet.schema.MessageTypeParser
 import org.scalatest.funsuite.AnyFunSuite
+import scala.collection.JavaConverters._
 
 class ParquetConverterSuite extends AnyFunSuite {
   test("Bench schema conversion") {
@@ -16,6 +23,28 @@ class ParquetConverterSuite extends AnyFunSuite {
     })
 
     println(s"Unshade nano time: $ret")
+  }
+
+  test("Bench blob metadata conversion") {
+    val filename = "/home/ubuntu/Workspace/kudo-bench-datagen/gen/" +
+      "5000000/part-00000-0c7e9b7c-b6b6-4b20-9f3f-f567ef1a77ec-c000.snappy.parquet"
+
+
+    val conf = new Configuration()
+    val inputFile = HadoopInputFile.fromPath(new Path(filename), conf)
+
+    Using.resource(ParquetFileReader.open(inputFile)) { reader =>
+      val footer = reader.getFooter
+      val blocks = footer.getBlocks
+      println(s"Blocks count: ${blocks.size()}")
+
+      val ret = timeDist(1000, () => {
+        val unshaded =  blocks.asScala.map(unshade)
+        assert(unshaded.length == blocks.size())
+      })
+
+      println(s"Unshade block metadata: $ret")
+    }
   }
 
   def generateSchemaString(col: Int): String = {
