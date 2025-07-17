@@ -1164,7 +1164,7 @@ def test_delta_write_partial_overwrite_replace_where_sql(spark_tmp_path, spark_t
 
     def update_table(spark, path):
         view_name = spark_tmp_table_factory.get()
-        gen_df(spark, gen_list).gen_df_and_replace_view(view_name)
+        gen_df(spark, gen_list).createOrReplaceTempView(view_name)
         spark.sql(f"INSERT INTO TABLE delta.`{path}` "
                   f"REPLACE WHRER b = 'y' "
                   f"SELECT * FROM {view_name}")
