@@ -1166,7 +1166,7 @@ def test_delta_write_partial_overwrite_replace_where_sql(spark_tmp_path, spark_t
         view_name = spark_tmp_table_factory.get()
         gen_df(spark, gen_list).createOrReplaceTempView(view_name)
         spark.sql(f"INSERT INTO TABLE delta.`{path}` "
-                  f"REPLACE WHRER b = 'y' "
+                  f"REPLACE WHERE b = 'y' "
                   f"SELECT * FROM {view_name}")
 
     assert_gpu_and_cpu_writes_are_equal_collect(
