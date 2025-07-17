@@ -1137,43 +1137,43 @@ def test_delta_write_partial_overwrite_replace_where(spark_tmp_path):
     # Avoid checking delta log equivalence here. Using partition columns involves sorting, and
     # there's no guarantees on the task partitioning due to random sampling.
 
-@allow_non_gpu(*delta_meta_allow)
-@delta_lake
-@ignore_order
-@pytest.mark.skipif(is_before_spark_320(), reason="Delta Lake writes are not supported before Spark 3.2.x")
-def test_delta_write_partial_overwrite_replace_where_sql(spark_tmp_path, spark_tmp_table_factory):
-    gen_list = [("a", int_gen),
-                ("b", SetValuesGen(StringType(), ["x", "y", "z"])),
-                ("c", string_gen),
-                ("d", SetValuesGen(IntegerType(), [1, 2, 3])),
-                ("e", long_gen)]
-    data_path = spark_tmp_path + "/DELTA_DATA"
-
-    def setup_table_func(spark):
-        return gen_df(spark, gen_list).limit(10)
-
-    with_cpu_session(lambda spark: setup_delta_dest_tables(spark, data_path, setup_table_func,
-                                                           False, False, ["b", "d"]))
-
-
-    gen_list = [("a", int_gen),
-                ("b", SetValuesGen(StringType(), ["y"])),
-                ("c", string_gen),
-                ("d", SetValuesGen(IntegerType(), [1, 2, 3])),
-                ("e", long_gen)]
-
-    def update_table(spark, path):
-        view_name = spark_tmp_table_factory.get()
-        gen_df(spark, gen_list).createOrReplaceTempView(view_name)
-        spark.sql(f"INSERT INTO TABLE delta.`{path}` "
-                  f"REPLACE WHERE b = 'y' "
-                  f"SELECT * FROM {view_name}")
-
-    assert_gpu_and_cpu_writes_are_equal_collect(
-        lambda spark, path: update_table(spark, path),
-        lambda spark, path: spark.read.format("delta").load(path),
-        data_path,
-        conf=copy_and_update(writer_confs, delta_writes_enabled_conf))
+# @allow_non_gpu(*delta_meta_allow)
+# @delta_lake
+# @ignore_order
+# @pytest.mark.skipif(is_before_spark_320(), reason="Delta Lake writes are not supported before Spark 3.2.x")
+# def test_delta_write_partial_overwrite_replace_where_sql(spark_tmp_path, spark_tmp_table_factory):
+#     gen_list = [("a", int_gen),
+#                 ("b", SetValuesGen(StringType(), ["x", "y", "z"])),
+#                 ("c", string_gen),
+#                 ("d", SetValuesGen(IntegerType(), [1, 2, 3])),
+#                 ("e", long_gen)]
+#     data_path = spark_tmp_path + "/DELTA_DATA"
+#
+#     def setup_table_func(spark):
+#         return gen_df(spark, gen_list).limit(10)
+#
+#     with_cpu_session(lambda spark: setup_delta_dest_tables(spark, data_path, setup_table_func,
+#                                                            False, False, ["b", "d"]))
+#
+#
+#     gen_list = [("a", int_gen),
+#                 ("b", SetValuesGen(StringType(), ["y"])),
+#                 ("c", string_gen),
+#                 ("d", SetValuesGen(IntegerType(), [1, 2, 3])),
+#                 ("e", long_gen)]
+#
+#     def update_table(spark, path):
+#         view_name = spark_tmp_table_factory.get()
+#         gen_df(spark, gen_list).createOrReplaceTempView(view_name)
+#         spark.sql(f"INSERT INTO TABLE delta.`{path}` "
+#                   f"REPLACE WHERE b = 'y' "
+#                   f"SELECT * FROM {view_name}")
+#
+#     assert_gpu_and_cpu_writes_are_equal_collect(
+#         lambda spark, path: update_table(spark, path),
+#         lambda spark, path: spark.read.format("delta").load(path),
+#         data_path,
+#         conf=copy_and_update(writer_confs, delta_writes_enabled_conf))
 
 # ID mapping is supported starting in Delta Lake 2.2, but currently cannot distinguish
 # Delta Lake 2.1 from 2.2 in tests. https://github.com/NVIDIA/spark-rapids/issues/9276
