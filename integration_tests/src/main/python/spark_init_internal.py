@@ -144,8 +144,9 @@ def pytest_sessionstart(session):
         _handle_event_log_dir(_sb, 'gw0')
 
     # enableHiveSupport() is needed for parquet bucket tests
-    _s = _sb.enableHiveSupport() \
-            .appName('rapids spark plugin integration tests (python)').getOrCreate()
+    # _s = _sb.enableHiveSupport() \
+    #         .appName('rapids spark plugin integration tests (python)').getOrCreate()
+    _s = _sb.appName('rapids spark plugin integration tests (python)').getOrCreate()
     #TODO catch the ClassNotFound error that happens if the classpath is not set up properly and
     # make it a better error message
     _s.sparkContext.setLogLevel("WARN")
