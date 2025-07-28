@@ -88,6 +88,17 @@ def test_iceberg_v2_position_delete_with_url_encoded_path(spark_tmp_table_factor
         conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
 
 
+
+def _check_and_log_count(table_name, msg_prefix,  conf=None):
+    if conf is None:
+        conf = {}
+    gpu_count = with_gpu_session(lambda spark: spark.table(table_name).count(), conf)
+    cpu_count = with_cpu_session(lambda spark: spark.table(table_name).count(), conf)
+    assert gpu_count == cpu_count, \
+        f"{msg_prefix}, count not match, gpu: {gpu_count}, cpu: {cpu_count}"
+    logging.info(f"{msg_prefix} count is {gpu_count}")
+
+
 @iceberg
 @ignore_order(local=True)
 @pytest.mark.parametrize('reader_type', rapids_reader_types)
@@ -103,10 +114,9 @@ def test_iceberg_v2_mixed_deletes(spark_tmp_table_factory, spark_tmp_path, reade
     _change_table(table_name,
                   lambda spark: spark.sql(f"DELETE FROM {table_name} where _c1 < 0"),
                   "No position deletes generated")
-
-    assert_gpu_and_cpu_row_counts_equal(
-        lambda spark: spark.table(table_name),
-        conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
+    _check_and_log_count(table_name,
+                         msg_prefix="After position delete",
+                         conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
 
     # Equation deletes
     _change_table(table_name,
@@ -114,28 +124,30 @@ def test_iceberg_v2_mixed_deletes(spark_tmp_table_factory, spark_tmp_path, reade
                                                 f"{spark_tmp_path}" ),
                   "No equation deletes generated")
 
-    assert_gpu_and_cpu_row_counts_equal(
-        lambda spark: spark.table(table_name),
-        conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
+    _check_and_log_count(table_name,
+                         msg_prefix="After first eq delete",
+                         conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
+
 
     # Equation deletes
     _change_table(table_name,
                   lambda spark: _add_eq_deletes(spark, ["_c1", "_c2"], 110, table_name,
                                                 f"{spark_tmp_path}"),
                   "No equation deletes generated")
-    assert_gpu_and_cpu_row_counts_equal(
-        lambda spark: spark.table(table_name),
-        conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
+
+    _check_and_log_count(table_name,
+                         msg_prefix="After second eq delete",
+                         conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
 
     # Equation deletes
     _change_table(table_name,
                   lambda spark: _add_eq_deletes(spark, ["_c2", "_c3", "_c6"], 140, table_name,
                                                 f"{spark_tmp_path}"),
                   "No equation deletes generated")
+    _check_and_log_count(table_name,
+                         msg_prefix="After second third delete",
+                         conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
 
-    assert_gpu_and_cpu_row_counts_equal(
-        lambda spark: spark.table(table_name),
-        conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
 
     assert_gpu_and_cpu_are_equal_collect(
         lambda spark: spark.table(table_name),
