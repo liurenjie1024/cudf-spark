@@ -99,7 +99,7 @@ def _add_eq_deletes(spark: SparkSession, eq_delete_cols: List[str], row_count: i
                .distinct()
                .orderBy(eq_delete_cols + ["_partition"])
                .limit(row_count)
-               .repartition(1))
+               .coalesce(1))
     deletes.write.parquet(temp_dir, mode='overwrite')
     parquet_files = [f for f in os.listdir(temp_dir) if f.endswith(".parquet")]
     assert len(parquet_files) == 1, "Only one delete parquet file should be created"
@@ -112,6 +112,7 @@ def _add_eq_deletes(spark: SparkSession, eq_delete_cols: List[str], row_count: i
 def _change_table(table_name, table_func: Callable[[SparkSession], None], message: str):
     def change_table(spark: SparkSession):
         before_count = spark.table(table_name).count()
+        spark.sql(f"REFRESH TABLE {table_name}")
         table_func(spark)
         spark.sql(f"REFRESH TABLE {table_name}")
         after_count = spark.table(table_name).count()
