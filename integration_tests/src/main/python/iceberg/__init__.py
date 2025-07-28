@@ -97,7 +97,7 @@ def _add_eq_deletes(spark: SparkSession, eq_delete_cols: List[str], row_count: i
     deletes = (spark.table(table_name)
                .select(eq_delete_cols + ["_partition"])
                .distinct()
-               .orderBy(eq_delete_cols)
+               .orderBy(eq_delete_cols + ["_partition"])
                .limit(row_count)
                .repartition(1))
     deletes.write.parquet(temp_dir, mode='overwrite')

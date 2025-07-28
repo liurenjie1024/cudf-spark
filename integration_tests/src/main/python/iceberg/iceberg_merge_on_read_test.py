@@ -101,7 +101,7 @@ def test_iceberg_v2_mixed_deletes(spark_tmp_table_factory, spark_tmp_path, reade
     # Equation deletes
     _change_table(table_name,
                   lambda spark: _add_eq_deletes(spark, ["_c0"], 170, table_name,
-                                                f"{spark_tmp_path}/test_iceberg_v2_mixed_deletes_1" ),
+                                                f"{spark_tmp_path}" ),
                   "No equation deletes generated")
 
     # Position deletes
@@ -112,13 +112,13 @@ def test_iceberg_v2_mixed_deletes(spark_tmp_table_factory, spark_tmp_path, reade
     # Equation deletes
     _change_table(table_name,
                   lambda spark: _add_eq_deletes(spark, ["_c1", "_c2"], 110, table_name,
-                                                f"{spark_tmp_path}/test_iceberg_v2_mixed_deletes_2"),
+                                                f"{spark_tmp_path}"),
                   "No equation deletes generated")
 
     # Equation deletes
     _change_table(table_name,
                   lambda spark: _add_eq_deletes(spark, ["_c2", "_c3", "_c6"], 140, table_name,
-                                                f"{spark_tmp_path}/test_iceberg_v2_mixed_deletes_3"),
+                                                f"{spark_tmp_path}"),
                   "No equation deletes generated")
 
 
