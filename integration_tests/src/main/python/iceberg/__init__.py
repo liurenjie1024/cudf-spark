@@ -79,6 +79,9 @@ def setup_base_iceberg_table(spark_tmp_table_factory,
                   f"TBLPROPERTIES ({table_prop_sql}) "
                   f"PARTITIONED BY (bucket(16, _c2), bucket(16, _c3)) "
                   f"AS SELECT * FROM {tmp_view_name}")
+        # Create this branch to keep unmodified table
+        spark.sql(f"ALTER TABLE {table_name} CREATE BRANCH `base-branch`")
+
 
     with_cpu_session(set_iceberg_table)
     return table_name
@@ -94,7 +97,7 @@ def _add_eq_deletes(spark: SparkSession, eq_delete_cols: List[str], row_count: i
     spark_warehouse_dir = spark.conf.get("spark.sql.catalog.spark_catalog.warehouse")
 
     temp_dir = tempfile.mkdtemp(dir=spark_tmp_path)
-    deletes = (spark.table(table_name)
+    deletes = (spark.sql(f"SELECT * {table_name}.`base-branch`")
                .select(eq_delete_cols + ["_partition"])
                .distinct()
                .orderBy(eq_delete_cols + ["_partition"])
