@@ -147,7 +147,8 @@ def test_iceberg_v2_mixed_deletes(spark_tmp_table_factory, spark_tmp_path, reade
                          msg_prefix="After third eq deletes",
                          conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
 
-    logging.info(f"Counts are: {count1}, {count2}, {count3}, {count4}")
+    logging.info(f"test_iceberg_v2_mixed_deletes counts are: {count1}, {count2}, {count3},"
+                 f" {count4}")
 
 
     assert_gpu_and_cpu_are_equal_collect(
