@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-set -ex
+set -x
 
 nvidia-smi
 
