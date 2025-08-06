@@ -22,6 +22,7 @@ nvidia-smi
 . jenkins/version-def.sh
 
 echo "I love test"
+exit 1
 
 # if run in jenkins WORKSPACE refers to rapids root path; if not run in jenkins just use current pwd(contains jenkins dirs)
 WORKSPACE=${WORKSPACE:-`pwd`}
