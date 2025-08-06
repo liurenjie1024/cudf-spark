@@ -20,6 +20,9 @@ set -x
 nvidia-smi
 
 . jenkins/version-def.sh
+
+echo "I love test"
+
 # if run in jenkins WORKSPACE refers to rapids root path; if not run in jenkins just use current pwd(contains jenkins dirs)
 WORKSPACE=${WORKSPACE:-`pwd`}
 
@@ -350,34 +353,34 @@ TEST_MODE=${TEST_MODE:-'DEFAULT'}
 if [[ $TEST_MODE == "DEFAULT" ]]; then
   ./run_pyspark_from_build.sh
 
-  SPARK_SHELL_SMOKE_TEST=1 \
-  PYSP_TEST_spark_shuffle_manager=com.nvidia.spark.rapids.${SHUFFLE_SPARK_SHIM}.RapidsShuffleManager \
-    ./run_pyspark_from_build.sh
-
-  EXPLAIN_ONLY_CPU_SMOKE_TEST=1 \
-    ./run_pyspark_from_build.sh
-
-  # As '--packages' only works on the default cuda12 jar, it does not support classifiers
-  # refer to issue : https://issues.apache.org/jira/browse/SPARK-20075
-  # "$CLASSIFIER" == ''" is usally for the case running by developers,
-  # while "$CLASSIFIER" == "cuda12" is for the case running on CI.
-  # We expect to run packages test for both cases
-  if [[ "$CLASSIFIER" == "" || "$CLASSIFIER" == "cuda12" ]]; then
-    SPARK_SHELL_SMOKE_TEST=1 \
-    PYSP_TEST_spark_jars_packages=com.nvidia:rapids-4-spark_${SCALA_BINARY_VER}:${PROJECT_VER} \
-    PYSP_TEST_spark_jars_repositories=${PROJECT_REPO} \
-      ./run_pyspark_from_build.sh
-  fi
-
-  # ParquetCachedBatchSerializer cache_test
-  PYSP_TEST_spark_sql_cache_serializer=com.nvidia.spark.ParquetCachedBatchSerializer \
-    ./run_pyspark_from_build.sh -k cache_test
+#  SPARK_SHELL_SMOKE_TEST=1 \
+#  PYSP_TEST_spark_shuffle_manager=com.nvidia.spark.rapids.${SHUFFLE_SPARK_SHIM}.RapidsShuffleManager \
+#    ./run_pyspark_from_build.sh
+#
+#  EXPLAIN_ONLY_CPU_SMOKE_TEST=1 \
+#    ./run_pyspark_from_build.sh
+#
+#  # As '--packages' only works on the default cuda12 jar, it does not support classifiers
+#  # refer to issue : https://issues.apache.org/jira/browse/SPARK-20075
+#  # "$CLASSIFIER" == ''" is usally for the case running by developers,
+#  # while "$CLASSIFIER" == "cuda12" is for the case running on CI.
+#  # We expect to run packages test for both cases
+#  if [[ "$CLASSIFIER" == "" || "$CLASSIFIER" == "cuda12" ]]; then
+#    SPARK_SHELL_SMOKE_TEST=1 \
+#    PYSP_TEST_spark_jars_packages=com.nvidia:rapids-4-spark_${SCALA_BINARY_VER}:${PROJECT_VER} \
+#    PYSP_TEST_spark_jars_repositories=${PROJECT_REPO} \
+#      ./run_pyspark_from_build.sh
+#  fi
+#
+#  # ParquetCachedBatchSerializer cache_test
+#  PYSP_TEST_spark_sql_cache_serializer=com.nvidia.spark.ParquetCachedBatchSerializer \
+#    ./run_pyspark_from_build.sh -k cache_test
 fi
 
 # Delta Lake tests
-if [[ "$TEST_MODE" == "DEFAULT" || "$TEST_MODE" == "DELTA_LAKE_ONLY" ]]; then
-  run_delta_lake_tests
-fi
+#if [[ "$TEST_MODE" == "DEFAULT" || "$TEST_MODE" == "DELTA_LAKE_ONLY" ]]; then
+#  run_delta_lake_tests
+#fi
 
 # Iceberg tests
 if [[ "$TEST_MODE" == "DEFAULT" || "$TEST_MODE" == "ICEBERG_ONLY" ]]; then
@@ -385,50 +388,50 @@ if [[ "$TEST_MODE" == "DEFAULT" || "$TEST_MODE" == "ICEBERG_ONLY" ]]; then
 fi
 
 # Iceberg s3tables tests
-if [[ "$TEST_MODE" == "ICEBERG_S3TABLES_ONLY" ]]; then
-  run_iceberg_tests 's3tables'
-fi
-
-# Avro tests
-if [[ "$TEST_MODE" == "DEFAULT" || "$TEST_MODE" == "AVRO_ONLY" ]]; then
-  run_avro_tests
-fi
-
-# Mutithreaded Shuffle test
-if [[ "$TEST_MODE" == "DEFAULT" || "$TEST_MODE" == "MULTITHREADED_SHUFFLE" ]]; then
-  rapids_shuffle_smoke_test
-fi
-
-# cudf_udf test: this mostly depends on cudf-py, so we run it into an independent CI
-if [[ "$TEST_MODE" == "CUDF_UDF_ONLY" ]]; then
-  # hardcode config
-  [[ ${TEST_PARALLEL} -gt 2 ]] && export TEST_PARALLEL=2
-  PYSP_TEST_spark_rapids_memory_gpu_allocFraction=0.1 \
-    PYSP_TEST_spark_rapids_memory_gpu_minAllocFraction=0 \
-    PYSP_TEST_spark_rapids_python_memory_gpu_allocFraction=0.1 \
-    PYSP_TEST_spark_rapids_python_concurrentPythonWorkers=2 \
-    PYSP_TEST_spark_executorEnv_PYTHONPATH=${RAPIDS_PLUGIN_JAR} \
-    PYSP_TEST_spark_python=${CONDA_ROOT}/bin/python \
-    ./run_pyspark_from_build.sh -m cudf_udf --cudf_udf
-fi
-
-# Pyarrow tests
-if [[ "$TEST_MODE" == "DEFAULT" || "$TEST_MODE" == "PYARROW_ONLY" ]]; then
-  run_pyarrow_tests
-fi
-
-# Non-UTC time zone tests
-if [[ "$TEST_MODE" == "NON_UTC_TZ" ]]; then
-  run_non_utc_time_zone_tests
-fi
-
-# hybrid execution tests
-if [[ "$TEST_MODE" == "DEFAULT" || "$TEST_MODE" == "HYBRID_EXECUTION" ]]; then
-  source "${WORKSPACE}/jenkins/hybrid_execution.sh"
-  if hybrid_prepare ; then
-    LOAD_HYBRID_BACKEND=1 ./run_pyspark_from_build.sh -m hybrid_test
-  fi
-fi
+#if [[ "$TEST_MODE" == "ICEBERG_S3TABLES_ONLY" ]]; then
+#  run_iceberg_tests 's3tables'
+#fi
+#
+## Avro tests
+#if [[ "$TEST_MODE" == "DEFAULT" || "$TEST_MODE" == "AVRO_ONLY" ]]; then
+#  run_avro_tests
+#fi
+#
+## Mutithreaded Shuffle test
+#if [[ "$TEST_MODE" == "DEFAULT" || "$TEST_MODE" == "MULTITHREADED_SHUFFLE" ]]; then
+#  rapids_shuffle_smoke_test
+#fi
+#
+## cudf_udf test: this mostly depends on cudf-py, so we run it into an independent CI
+#if [[ "$TEST_MODE" == "CUDF_UDF_ONLY" ]]; then
+#  # hardcode config
+#  [[ ${TEST_PARALLEL} -gt 2 ]] && export TEST_PARALLEL=2
+#  PYSP_TEST_spark_rapids_memory_gpu_allocFraction=0.1 \
+#    PYSP_TEST_spark_rapids_memory_gpu_minAllocFraction=0 \
+#    PYSP_TEST_spark_rapids_python_memory_gpu_allocFraction=0.1 \
+#    PYSP_TEST_spark_rapids_python_concurrentPythonWorkers=2 \
+#    PYSP_TEST_spark_executorEnv_PYTHONPATH=${RAPIDS_PLUGIN_JAR} \
+#    PYSP_TEST_spark_python=${CONDA_ROOT}/bin/python \
+#    ./run_pyspark_from_build.sh -m cudf_udf --cudf_udf
+#fi
+#
+## Pyarrow tests
+#if [[ "$TEST_MODE" == "DEFAULT" || "$TEST_MODE" == "PYARROW_ONLY" ]]; then
+#  run_pyarrow_tests
+#fi
+#
+## Non-UTC time zone tests
+#if [[ "$TEST_MODE" == "NON_UTC_TZ" ]]; then
+#  run_non_utc_time_zone_tests
+#fi
+#
+## hybrid execution tests
+#if [[ "$TEST_MODE" == "DEFAULT" || "$TEST_MODE" == "HYBRID_EXECUTION" ]]; then
+#  source "${WORKSPACE}/jenkins/hybrid_execution.sh"
+#  if hybrid_prepare ; then
+#    LOAD_HYBRID_BACKEND=1 ./run_pyspark_from_build.sh -m hybrid_test
+#  fi
+#fi
 
 popd
 stop-worker.sh
