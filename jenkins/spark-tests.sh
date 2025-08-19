@@ -254,6 +254,7 @@ run_iceberg_tests() {
       PYSP_TEST_spark_sql_catalog_spark__catalog="org.apache.iceberg.spark.SparkSessionCatalog" \
       PYSP_TEST_spark_sql_catalog_spark__catalog_type="hadoop" \
       PYSP_TEST_spark_sql_catalog_spark__catalog_warehouse="/tmp/spark-warehouse-$RANDOM" \
+      PYSP_TEST_spark_sql_iceberg_vectorization_enabled="false" \
       ./run_pyspark_from_build.sh -s -m iceberg --iceberg
   elif [[ "$test_type" == "s3tables" ]]; then
     echo "!!! Running iceberg tests with s3tables"
