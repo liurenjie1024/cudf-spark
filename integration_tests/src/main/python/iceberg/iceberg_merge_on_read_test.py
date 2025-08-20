@@ -155,6 +155,9 @@ def test_iceberg_v2_mixed_deletes(spark_tmp_table_factory, spark_tmp_path, reade
 
     assert count5 == count4, f"Final count {count5} does not match expected {count4}"
 
+    count6 = with_cpu_session(lambda spark: len(spark.table(table_name).collect()))
+    assert count6 == count5, f"Final collect count {count6} does not match expected {count5}"
+
     # assert_gpu_and_cpu_are_equal_collect(
     #     lambda spark: spark.table(table_name),
     #     conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
