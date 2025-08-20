@@ -109,13 +109,6 @@ def test_iceberg_v2_mixed_deletes(spark_tmp_table_factory, spark_tmp_path, reade
                                   register_iceberg_add_eq_deletes_udf):
     # We use a fixed seed here to ensure that data deletion vector has been generated
     table_name = setup_base_iceberg_table(spark_tmp_table_factory)
-    # Position deletes
-    _change_table(table_name,
-                  lambda spark: spark.sql(f"DELETE FROM {table_name} where _c1 < 0"),
-                  "No position deletes generated")
-    count1 =  _check_and_log_count(table_name,
-                         msg_prefix="After position deletes",
-                         conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
 
     # Equation deletes
     _change_table(table_name,
@@ -123,6 +116,15 @@ def test_iceberg_v2_mixed_deletes(spark_tmp_table_factory, spark_tmp_path, reade
                                                 f"{spark_tmp_path}" ),
                   "No equation deletes generated")
 
+    count1 =  _check_and_log_count(table_name,
+                         msg_prefix="After position deletes",
+                         conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
+
+
+    # Position deletes
+    _change_table(table_name,
+                  lambda spark: spark.sql(f"DELETE FROM {table_name} where _c1 < 0"),
+                  "No position deletes generated")
     count2 = _check_and_log_count(table_name,
                          msg_prefix="After first eq deletes",
                          conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
@@ -130,7 +132,7 @@ def test_iceberg_v2_mixed_deletes(spark_tmp_table_factory, spark_tmp_path, reade
 
     # Equation deletes
     _change_table(table_name,
-                  lambda spark: _add_eq_deletes(spark, ["_c2", "_c3", "_c9"], 140, table_name,
+                  lambda spark: _add_eq_deletes(spark, ["_c1", "_c2"], 110, table_name,
                                                 f"{spark_tmp_path}"),
                   "No equation deletes generated")
     count3 = _check_and_log_count(table_name,
@@ -139,9 +141,10 @@ def test_iceberg_v2_mixed_deletes(spark_tmp_table_factory, spark_tmp_path, reade
 
     # Equation deletes
     _change_table(table_name,
-                  lambda spark: _add_eq_deletes(spark, ["_c1", "_c2"], 110, table_name,
+                  lambda spark: _add_eq_deletes(spark, ["_c2", "_c3", "_c9"], 140, table_name,
                                                 f"{spark_tmp_path}"),
                   "No equation deletes generated")
+
     count4 =  _check_and_log_count(table_name,
                          msg_prefix="After third eq deletes",
                          conf={'spark.rapids.sql.format.parquet.reader.type': reader_type})
