@@ -16,15 +16,20 @@
 
 package com.nvidia.spark.rapids.fileio.hadoop;
 
+import ai.rapids.cudf.HostMemoryBuffer;
+import com.nvidia.spark.rapids.fileio.FileRangeWithOffset;
 import com.nvidia.spark.rapids.fileio.RapidsInputFile;
 import com.nvidia.spark.rapids.fileio.SeekableInputStream;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Objects;
+
+import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * Implementation of {@link RapidsInputFile} using the Hadoop file system.
@@ -33,30 +38,75 @@ import java.util.Objects;
  * for reading the file.
  */
 public class HadoopInputFile implements RapidsInputFile {
-    private final Path filePath;
-    private final FileSystem fs;
+  private final Path filePath;
+  private final FileSystem fs;
 
-    public static HadoopInputFile create(Path filePath, Configuration conf) throws IOException {
-        Objects.requireNonNull(filePath, "filePath can't be null!");
-        Objects.requireNonNull(conf, "Hadoop conf can't be null");
-        FileSystem fs = filePath.getFileSystem(conf);
-        return new HadoopInputFile(filePath, fs);
+  public static HadoopInputFile create(Path filePath, Configuration conf) throws IOException {
+    Objects.requireNonNull(filePath, "filePath can't be null!");
+    Objects.requireNonNull(conf, "Hadoop conf can't be null");
+    FileSystem fs = filePath.getFileSystem(conf);
+    return new HadoopInputFile(filePath, fs);
+  }
+
+  private HadoopInputFile(Path filePath, FileSystem fs) {
+    Objects.requireNonNull(filePath, "filePath can't be null!");
+    Objects.requireNonNull(fs, "FileSystem can't be null");
+    this.filePath = filePath;
+    this.fs = fs;
+  }
+
+  @Override
+  public long getLength() throws IOException {
+    return fs.getFileStatus(this.filePath).getLen();
+  }
+
+  @Override
+  public SeekableInputStream open() throws IOException {
+    return new HadoopInputStream(fs.open(filePath));
+  }
+
+  @Override
+  public HostMemoryBuffer tailRead(long length) throws IOException {
+    checkArgument(length > 0, "Length must be positive");
+
+    long fileLen = getLength();
+
+    long startPos = fileLen - length;
+    if (startPos < 0) {
+      throw new IllegalArgumentException(
+          "Length exceeds file size: " + length + " > " + fileLen);
     }
 
-    private HadoopInputFile(Path filePath, FileSystem fs) {
-        Objects.requireNonNull(filePath, "filePath can't be null!");
-        Objects.requireNonNull(fs, "FileSystem can't be null");
-        this.filePath = filePath;
-        this.fs = fs;
+    HostMemoryBuffer buf = null;
+    try (FSDataInputStream fin = fs.open(filePath)) {
+      buf = HostMemoryBuffer.allocate(length);
+      fin.readFully(startPos, buf.asByteBuffer());
+      return buf;
+    } catch (Throwable e) {
+      if (buf != null) {
+        buf.close();
+      }
+      throw e;
+    }
+  }
+
+  @Override
+  public long vectorRead(HostMemoryBuffer dest, List<FileRangeWithOffset> ranges) throws IOException {
+    Objects.requireNonNull(dest, "Destination buffer cannot be null");
+    Objects.requireNonNull(ranges, "Ranges cannot be null");
+    checkArgument(!ranges.isEmpty(), "Ranges cannot be empty");
+
+    long bytesCopied = 0L;
+    try(FSDataInputStream fin = fs.open(filePath)) {
+      // Coalesce the ranges to avoid redundant reads
+      List<FileRangeWithOffset> coalescedRanges = FileRangeWithOffset.coalesce(ranges);
+      for (FileRangeWithOffset range : coalescedRanges) {
+        fin.readFully(range.getStartPos(), dest.asByteBuffer(range.getDestOffset(),
+            range.getLength()));
+        bytesCopied += range.getLength();
+      }
     }
 
-    @Override
-    public long getLength() throws IOException {
-        return fs.getFileStatus(this.filePath).getLen();
-    }
-
-    @Override
-    public SeekableInputStream open() throws IOException {
-        return new HadoopInputStream(fs.open(filePath));
-    }
+    return bytesCopied;
+  }
 }

@@ -25,13 +25,14 @@ import com.nvidia.spark.rapids.RapidsConf.ParquetFooterReaderType
 import com.nvidia.spark.rapids.RapidsPluginImplicits._
 import com.nvidia.spark.rapids.RmmRapidsRetryIterator.withRetryNoSplit
 import com.nvidia.spark.rapids.filecache.FileCache
-import com.nvidia.spark.rapids.fileio.{RapidsFileIO, SeekableInputStream}
+import com.nvidia.spark.rapids.fileio.{FileRangeWithOffset, RapidsFileIO, SeekableInputStream}
 import com.nvidia.spark.rapids.fileio.hadoop.HadoopFileIO
 import com.nvidia.spark.rapids.jni.{DateTimeRebase, ParquetFooter, RmmSpark}
 import com.nvidia.spark.rapids.parquet.ParquetPartitionReader.{CopyRange, LocalCopy, PARQUET_MAGIC}
 import com.nvidia.spark.rapids.shims.{ColumnDefaultValuesShims, GpuParquetCrypto, GpuTypeShims, ShimFilePartitionReaderFactory, SparkShimImpl}
 import com.nvidia.spark.rapids.shims.parquet.{ParquetLegacyNanoAsLongShims, ParquetSchemaClipShims, ParquetStringPredShims}
-import java.io.{Closeable, EOFException, FileNotFoundException, InputStream, IOException, OutputStream}
+
+import java.io.{Closeable, EOFException, FileNotFoundException, IOException, InputStream, OutputStream}
 import java.net.URI
 import java.nio.ByteBuffer
 import java.nio.channels.SeekableByteChannel
@@ -44,7 +45,6 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.io.IOUtils
 import org.apache.parquet.bytes.BytesUtils
-import org.apache.parquet.bytes.BytesUtils.readIntLittleEndian
 import org.apache.parquet.column.ColumnDescriptor
 import org.apache.parquet.filter2.predicate.FilterApi
 import org.apache.parquet.format.Util
@@ -57,11 +57,11 @@ import org.apache.parquet.schema.{DecimalMetadata, GroupType, LogicalTypeAnnotat
 import org.apache.parquet.schema.LogicalTypeAnnotation.{DateLogicalTypeAnnotation, IntLogicalTypeAnnotation, TimestampLogicalTypeAnnotation}
 import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName
 import org.xerial.snappy.Snappy
+
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
-
 import org.apache.spark.TaskContext
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
@@ -82,6 +82,8 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.apache.spark.sql.vectorized.{ColumnarBatch, ColumnVector => SparkVector}
 import org.apache.spark.util.SerializableConfiguration
+
+import java.lang.Math.toIntExact
 
 /**
  * Base GpuParquetScan used for common code across Spark versions. Gpu version of
@@ -573,34 +575,39 @@ private case class GpuParquetFileFilterHandler(
     if (fileLen < MAGIC.length + FOOTER_LENGTH_SIZE + MAGIC.length) {
       throw new RuntimeException(s"$filePath is not a Parquet file (too small length: $fileLen )")
     }
-    val footerLengthIndex = fileLen - FOOTER_LENGTH_SIZE - MAGIC.length
-    withResource(inputFile.open()) { inputStream =>
-      withResource(new NvtxRange("ReadFooterBytes", NvtxColor.YELLOW)) { _ =>
-        inputStream.seek(footerLengthIndex)
-        val footerLength = readIntLittleEndian(inputStream)
+    withResource(new NvtxRange("ReadFooterBytes", NvtxColor.YELLOW)) { _ =>
+      withResource(inputFile.tailRead(8 * 1024 * 1024L)) { buf =>
+        val footerLengthPos = buf.getLength - (FOOTER_LENGTH_SIZE + MAGIC.length)
         val magic = new Array[Byte](MAGIC.length)
-        IOUtils.readFully(inputStream, magic, 0, magic.length)
-        val footerIndex = footerLengthIndex - footerLength
+        buf.getBytes(magic, 0, buf.getLength - MAGIC.length, MAGIC.length)
         verifyParquetMagic(filePath, magic)
-        if (footerIndex < MAGIC.length || footerIndex >= footerLengthIndex) {
-          throw new RuntimeException(s"corrupted file: the footer index is not within " +
-            s"the file: $footerIndex")
-        }
-        val hmbLength = (fileLen - footerIndex).toInt
-        closeOnExcept(HostMemoryBuffer.allocate(hmbLength + MAGIC.length, false)) { outBuffer =>
-          val out = new HostMemoryOutputStream(outBuffer)
-          out.write(MAGIC)
-          inputStream.seek(footerIndex)
-          // read the footer til the end of the file
-          val tmpBuffer = new Array[Byte](4096)
-          var bytesLeft = hmbLength
-          while (bytesLeft > 0) {
-            val readLength = Math.min(bytesLeft, tmpBuffer.length)
-            IOUtils.readFully(inputStream, tmpBuffer, 0, readLength)
-            out.write(tmpBuffer, 0, readLength)
-            bytesLeft -= readLength
+        val footerLength = buf.getInt(footerLengthPos)
+        val resultHmbLength = MAGIC.length +
+          footerLength +
+          FOOTER_LENGTH_SIZE +
+          MAGIC.length
+
+        if (footerLength <= footerLengthPos) {
+          logDebug("Footer length %d bytes is within prefetch size %d"
+            .format(footerLength, buf.getLength))
+          val footerStartPos = footerLengthPos - footerLength
+          if (footerStartPos >= MAGIC.length) {
+            val magicStartPos = footerStartPos - MAGIC.length
+            logDebug("Enough space to fit MAGIC before footerStartPos %d at %d"
+              .format(footerStartPos, magicStartPos))
+            buf.slice(magicStartPos, buf.getLength - magicStartPos)
+          } else {
+            logDebug("Not enough space to fit MAGIC before footerStartPos %d"
+              .format(footerStartPos))
+            closeOnExcept(HostMemoryBuffer.allocate(resultHmbLength)) { resultHmb =>
+              resultHmb.copyFromHostBuffer(MAGIC.length, buf, footerStartPos,
+                resultHmbLength - MAGIC.length)
+              resultHmb.setBytes(0L, MAGIC, 0, MAGIC.length)
+              resultHmb
+            }
           }
-          outBuffer
+        } else {
+          inputFile.tailRead(resultHmbLength)
         }
       }
     }
@@ -1880,9 +1887,9 @@ trait ParquetPartitionReaderBase extends Logging with ScanWithMetrics
       return 0L
     }
 
-    val coalescedRanges = coalesceReads(remoteCopies)
 
     val totalBytesCopied = if (fileIO.isInstanceOf[HadoopFileIO]) {
+      val coalescedRanges = coalesceReads(remoteCopies)
       // Fix this after https://github.com/NVIDIA/spark-rapids/issues/13306 is resolved
       PerfIO.readToHostMemory(
         conf, out.buffer, filePath.toUri,
@@ -1896,12 +1903,11 @@ trait ParquetPartitionReaderBase extends Logging with ScanWithMetrics
         }
       }
     } else {
-      withResource(fileIO.newInputFile(filePath).open()) { in =>
-        val copyBuffer: Array[Byte] = new Array[Byte](copyBufferSize)
-        coalescedRanges.foldLeft(0L) { (acc, blockCopy) =>
-          acc + copyDataRange(blockCopy, in, out, copyBuffer)
-        }
-      }
+      val offsets = remoteCopies
+        .map(c => new FileRangeWithOffset(c.offset, toIntExact(c.length), c.outputOffset))
+        .asJava
+
+      fileIO.newInputFile(filePath).vectorRead(out.buffer, offsets)
     }
 
     // try to cache the remote ranges that were copied

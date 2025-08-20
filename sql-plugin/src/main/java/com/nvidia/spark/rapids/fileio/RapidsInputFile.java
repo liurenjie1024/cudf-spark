@@ -16,7 +16,10 @@
 
 package com.nvidia.spark.rapids.fileio;
 
+import ai.rapids.cudf.HostMemoryBuffer;
+
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Represents an input file that can be read from.
@@ -37,4 +40,28 @@ public interface RapidsInputFile {
      * @throws IOException if an I/O error occurs while opening the file
      */
     SeekableInputStream open() throws IOException;
+
+    /**
+     * Read the last `length` bytes from the file into a {@link HostMemoryBuffer}.
+     * <br/>
+     * This method blocks until the end of the stream is reached.
+     * <br/>
+     *
+     * @param length the number of bytes to read from the end of the file, must be positive.
+     * @return a {@link HostMemoryBuffer} containing the last `length` bytes
+     * @throws IOException if an I/O error occurs while reading the file
+     */
+    HostMemoryBuffer tailRead(long length) throws IOException;
+
+    /**
+     * Read the specified ranges from the file into a {@link HostMemoryBuffer}.
+     * <br/>
+     * This method blocks until all ranges are read.
+     * <br/>
+     *
+     * @param dest the destination buffer to read data into
+     * @param ranges a list of {@link FileRangeWithOffset} specifying the ranges to read
+     * @throws IOException if an I/O error occurs while reading the file
+     */
+    long vectorRead(HostMemoryBuffer dest, List<FileRangeWithOffset> ranges) throws IOException;
 }

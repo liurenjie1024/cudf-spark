@@ -16,11 +16,14 @@
 
 package com.nvidia.spark.rapids.fileio.iceberg;
 
+import ai.rapids.cudf.HostMemoryBuffer;
+import com.nvidia.spark.rapids.fileio.FileRangeWithOffset;
 import com.nvidia.spark.rapids.fileio.RapidsInputFile;
 import com.nvidia.spark.rapids.fileio.SeekableInputStream;
 import org.apache.iceberg.io.InputFile;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -45,6 +48,16 @@ public class IcebergInputFile implements RapidsInputFile {
   @Override
   public SeekableInputStream open() throws IOException {
     return new IcebergInputStream(delegate.newStream());
+  }
+
+  @Override
+  public HostMemoryBuffer tailRead(long length) throws IOException {
+    throw new UnsupportedOperationException("tailRead is not supported for IcebergInputFile");
+  }
+
+  @Override
+  public long vectorRead(HostMemoryBuffer dest, List<FileRangeWithOffset> ranges) throws IOException {
+    throw new UnsupportedOperationException("vectorRead is not supported for IcebergInputFile");
   }
 
   /**
