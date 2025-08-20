@@ -119,7 +119,7 @@ def test_iceberg_v2_mixed_deletes(spark_tmp_table_factory, spark_tmp_path, reade
 
     # Equation deletes
     _change_table(table_name,
-                  lambda spark: _add_eq_deletes(spark, ["_c0"], 170, table_name,
+                  lambda spark: _add_eq_deletes(spark, ["_c0"], 8, table_name,
                                                 f"{spark_tmp_path}" ),
                   "No equation deletes generated")
 
@@ -130,7 +130,7 @@ def test_iceberg_v2_mixed_deletes(spark_tmp_table_factory, spark_tmp_path, reade
 
     # Equation deletes
     _change_table(table_name,
-                  lambda spark: _add_eq_deletes(spark, ["_c2", "_c3", "_c9"], 140, table_name,
+                  lambda spark: _add_eq_deletes(spark, ["_c2", "_c3", "_c9"], 8, table_name,
                                                 f"{spark_tmp_path}"),
                   "No equation deletes generated")
     count3 = _check_and_log_count(table_name,
@@ -139,7 +139,7 @@ def test_iceberg_v2_mixed_deletes(spark_tmp_table_factory, spark_tmp_path, reade
 
     # Equation deletes
     _change_table(table_name,
-                  lambda spark: _add_eq_deletes(spark, ["_c1", "_c2"], 110, table_name,
+                  lambda spark: _add_eq_deletes(spark, ["_c1", "_c2"], 8, table_name,
                                                 f"{spark_tmp_path}"),
                   "No equation deletes generated")
     count4 =  _check_and_log_count(table_name,

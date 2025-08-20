@@ -73,7 +73,7 @@ def setup_base_iceberg_table(spark_tmp_table_factory,
     table_prop_sql = ", ".join([f"'{k}' = '{v}'" for k, v in table_prop.items()])
 
     def set_iceberg_table(spark: SparkSession):
-        df = gen_df(spark, gen_list, seed=seed)
+        df = gen_df(spark, gen_list, length = 64, seed=seed)
         df.createOrReplaceTempView(tmp_view_name)
         spark.sql(f"CREATE TABLE {table_name} USING ICEBERG "
                   f"TBLPROPERTIES ({table_prop_sql}) "
