@@ -96,10 +96,11 @@ public class HadoopInputFile implements RapidsInputFile {
     Objects.requireNonNull(ranges, "Ranges cannot be null");
     checkArgument(!ranges.isEmpty(), "Ranges cannot be empty");
 
+    // Coalesce the ranges to avoid redundant reads
+    List<FileRangeWithOffset> coalescedRanges = FileRangeWithOffset.coalesce(ranges);
+
     long bytesCopied = 0L;
     try(FSDataInputStream fin = fs.open(filePath)) {
-      // Coalesce the ranges to avoid redundant reads
-      List<FileRangeWithOffset> coalescedRanges = FileRangeWithOffset.coalesce(ranges);
       for (FileRangeWithOffset range : coalescedRanges) {
         fin.readFully(range.getStartPos(), dest.asByteBuffer(range.getDestOffset(),
             range.getLength()));
