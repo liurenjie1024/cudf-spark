@@ -18,6 +18,7 @@ package com.nvidia.spark.rapids.fileio.hadoop;
 
 import ai.rapids.cudf.HostMemoryBuffer;
 import com.nvidia.spark.rapids.fileio.FileRangeWithOffset;
+import com.nvidia.spark.rapids.fileio.RapidsFileIOExecutor;
 import com.nvidia.spark.rapids.fileio.RapidsInputFile;
 import com.nvidia.spark.rapids.fileio.SeekableInputStream;
 import org.apache.hadoop.conf.Configuration;
@@ -26,8 +27,11 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
@@ -40,24 +44,31 @@ import static com.google.common.base.Preconditions.checkArgument;
 public class HadoopInputFile implements RapidsInputFile {
   private final Path filePath;
   private final FileSystem fs;
+  private final long length;
+  private final HadoopFileIOConfig config;
 
-  public static HadoopInputFile create(Path filePath, Configuration conf) throws IOException {
+  public static HadoopInputFile create(Path filePath, Configuration conf,
+      HadoopFileIOConfig config) throws IOException {
     Objects.requireNonNull(filePath, "filePath can't be null!");
     Objects.requireNonNull(conf, "Hadoop conf can't be null");
+    Objects.requireNonNull(config, "HadoopFileIOConfig can't be null");
     FileSystem fs = filePath.getFileSystem(conf);
-    return new HadoopInputFile(filePath, fs);
+    return new HadoopInputFile(filePath, fs, config);
   }
 
-  private HadoopInputFile(Path filePath, FileSystem fs) {
+  private HadoopInputFile(Path filePath, FileSystem fs, HadoopFileIOConfig config) throws IOException {
     Objects.requireNonNull(filePath, "filePath can't be null!");
     Objects.requireNonNull(fs, "FileSystem can't be null");
+    Objects.requireNonNull(config, "HadoopFileIOConfig can't be null");
     this.filePath = filePath;
     this.fs = fs;
+    this.length = fs.getFileStatus(filePath).getLen();
+    this.config = config;
   }
 
   @Override
   public long getLength() throws IOException {
-    return fs.getFileStatus(this.filePath).getLen();
+    return length;
   }
 
   @Override
@@ -96,18 +107,67 @@ public class HadoopInputFile implements RapidsInputFile {
     Objects.requireNonNull(ranges, "Ranges cannot be null");
     checkArgument(!ranges.isEmpty(), "Ranges cannot be empty");
 
-    // Coalesce the ranges to avoid redundant reads
-    List<FileRangeWithOffset> coalescedRanges = FileRangeWithOffset.coalesce(ranges);
+    if (config.isParallelVectorReadEnabled()) {
+      return parallelVectorRead(dest, ranges);
+    } else {
+      return serialVectorRead(dest, ranges);
+    }
+  }
+
+  private long parallelVectorRead(HostMemoryBuffer dest, List<FileRangeWithOffset> ranges) throws IOException {
+
+    List<FileRangeWithOffset> coalescedRanges = FileRangeWithOffset.coalesce(ranges,
+        config.getParallelVectorReadMaxChunkSize());
+    List<Future<Integer>> tasks = new ArrayList<>(coalescedRanges.size());
+
+    ExecutorService service = RapidsFileIOExecutor.getExecutor(config.getParallelVectorReadThreads());
 
     long bytesCopied = 0L;
-    try(FSDataInputStream fin = fs.open(filePath)) {
-      for (FileRangeWithOffset range : coalescedRanges) {
-        fin.readFully(range.getStartPos(), dest.asByteBuffer(range.getDestOffset(),
-            range.getLength()));
-        bytesCopied += range.getLength();
+
+    for (FileRangeWithOffset range : coalescedRanges) {
+      tasks.add(service.submit(() -> {
+        try (FSDataInputStream fin = fs.open(filePath)) {
+          // Read the data into the destination buffer
+          fin.readFully(range.getStartPos(), dest.asByteBuffer(range.getDestOffset(),
+              range.getLength()));
+          return range.getLength();
+        } catch (IOException e) {
+          throw new RuntimeException("Error reading from file: " + filePath, e);
+        }
+      }));
+    }
+
+    for (Future<Integer> task : tasks) {
+      try {
+        int bytesRead = task.get();
+        bytesCopied += bytesRead;
+      } catch (Exception e) {
+        throw new IOException("Error reading from file: " + filePath, e);
       }
     }
 
     return bytesCopied;
+  }
+
+  private long serialVectorRead(HostMemoryBuffer dest, List<FileRangeWithOffset> ranges) throws IOException {
+    Objects.requireNonNull(dest, "Destination buffer cannot be null");
+    Objects.requireNonNull(ranges, "Ranges cannot be null");
+    checkArgument(!ranges.isEmpty(), "Ranges cannot be empty");
+
+    // Coalesce the ranges to avoid redundant reads
+    List<FileRangeWithOffset> coalescedRanges = FileRangeWithOffset.coalesce(ranges, Integer.MAX_VALUE);
+
+    long bytesCopied = 0L;
+
+    try (FSDataInputStream fin = fs.open(filePath)) {
+      for (FileRangeWithOffset range : coalescedRanges) {
+        // Read the data into the destination buffer
+        fin.readFully(range.getStartPos(), dest.asByteBuffer(range.getDestOffset(),
+            range.getLength()));
+        bytesCopied += range.getLength();
+      }
+
+      return bytesCopied;
+    }
   }
 }

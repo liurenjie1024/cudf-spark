@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Objects;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static java.lang.Math.toIntExact;
 
 /**
  * Represents a range of bytes in a file with an associated destination offset.
@@ -55,6 +56,24 @@ public class FileRangeWithOffset {
   }
 
   /**
+   * Get the end position of the range in the input file.
+   * @return the end position in bytes
+   */
+  public long endOfRead() {
+    return startPos + length;
+  }
+
+  /**
+   * Get the end position of the range in the destination buffer.
+   * @return the end position in bytes
+   */
+  public long endOfWrite() {
+    return destOffset + length;
+  }
+
+
+
+  /**
    * Coalesce a list of {@link FileRangeWithOffset} ranges into a new list.
    * <br/>
    * This method combines adjacent ranges into a single range.
@@ -62,7 +81,8 @@ public class FileRangeWithOffset {
    * @param ranges the list of ranges to coalesce
    * @return a new list containing the coalesced ranges
    */
-  public static List<FileRangeWithOffset> coalesce(List<FileRangeWithOffset> ranges) {
+  public static List<FileRangeWithOffset> coalesce(List<FileRangeWithOffset> ranges,
+      int maxChunkSize) {
     Objects.requireNonNull(ranges, "ranges cannot be null");
     checkArgument(!ranges.isEmpty(), "ranges cannot be empty");
 
@@ -72,12 +92,19 @@ public class FileRangeWithOffset {
     for (FileRangeWithOffset range : ranges) {
       if (current == null) {
         current = range;
-      } else if (current.getStartPos() + current.getLength() == range.getStartPos() &&
-                 current.getDestOffset() + current.getLength() == range.getDestOffset()) {
-        // Coalesce adjacent ranges
-        current = new FileRangeWithOffset(current.getStartPos(),
-            current.getLength() + range.getLength(),
-            current.getDestOffset());
+      } else if (current.endOfRead() == range.getStartPos() &&
+                 current.endOfWrite() == range.getDestOffset()) {
+
+        int newLen = toIntExact(current.getLength() + range.getLength());
+        if (newLen > maxChunkSize) {
+          coalesced.add(current);
+          current = range;
+        } else {
+          // Coalesce adjacent ranges
+          current = new FileRangeWithOffset(current.getStartPos(),
+              newLen,
+              current.getDestOffset());
+        }
       } else {
         // Add the current range to the coalesced list and move to the next
         coalesced.add(current);

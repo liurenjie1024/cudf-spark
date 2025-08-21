@@ -17,15 +17,13 @@ package com.nvidia.spark.rapids
 
 import java.io.{File, FileOutputStream}
 import java.util
-
 import scala.collection.JavaConverters._
 import scala.collection.mutable.{HashMap, ListBuffer}
-
 import ai.rapids.cudf.Cuda
+import com.nvidia.spark.rapids.fileio.hadoop.HadoopFileIOConfig
 import com.nvidia.spark.rapids.jni.RmmSpark.OomInjectionType
 import com.nvidia.spark.rapids.jni.kudo.DumpOption
 import com.nvidia.spark.rapids.lore.{LoreId, OutputLoreId}
-
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.util.{ByteUnit, JavaUtils}
@@ -1102,6 +1100,34 @@ val GPU_COREDUMP_PIPE_PATTERN = conf("spark.rapids.gpu.coreDump.pipePattern")
       "spark.sql.parquet.outputTimestampType is set to INT96")
     .booleanConf
     .createWithDefault(true)
+
+  val HADOOP_FILE_IO_PARALLEL_VECTOR_READ_ENABLED =
+    conf("spark.rapids.sql.fileio.hadoop.parallel.vector.read.enabled")
+    .doc("When set to true, enables parallelism when files in HadoopFileIO vector read.")
+    .internal()
+    .booleanConf
+    .createWithDefault(false)
+
+  val HADOOP_FILE_IO_PARALLEL_VECTOR_READ_THREAD_POOL_SIZE =
+    conf("spark.rapids.sql.fileio.hadoop.parallel.vector.read.thread.pool.size")
+    .doc(s"When ${HADOOP_FILE_IO_PARALLEL_VECTOR_READ_ENABLED.key} is true, " +
+      "this config controls the parallelism of global thread pool for parallel reading chunks in " +
+      "HadoopFileIO vector read.")
+    .internal()
+    .integerConf
+    .checkValue(v => v > 0, "The parallelism must be greater than zero.")
+    .createWithDefault(64)
+
+  val HADOOP_FILE_IO_PARALLEL_VECTOR_READ_MAX_CHUNK_SIZE =
+    conf("spark.rapids.sql.fileio.hadoop.parallel.vector.read.max.chunk.size")
+    .doc(s"When ${HADOOP_FILE_IO_PARALLEL_VECTOR_READ_ENABLED.key} is true, " +
+      "this config controls the maximum merged chunk size of reading file chunks in HadoopFileIO " +
+      "vector read.")
+    .internal()
+    .integerConf
+    .checkValue(v => v > 0, "The batch size must be greater than zero.")
+    .createWithDefault(8 * 1024 * 1024)
+
 
   object ParquetFooterReaderType extends Enumeration {
     val JAVA, NATIVE, AUTO = Value
@@ -3577,6 +3603,13 @@ class RapidsConf(conf: Map[String, String]) extends Logging {
   lazy val caseWhenFuseEnabled: Boolean = get(CASE_WHEN_FUSE)
 
   lazy val isAsyncOutputWriteEnabled: Boolean = get(ENABLE_ASYNC_OUTPUT_WRITE)
+
+  lazy val hadoopFileIOConfig: HadoopFileIOConfig = {
+    new HadoopFileIOConfig(
+      get(HADOOP_FILE_IO_PARALLEL_VECTOR_READ_ENABLED),
+      get(HADOOP_FILE_IO_PARALLEL_VECTOR_READ_THREAD_POOL_SIZE),
+      get(HADOOP_FILE_IO_PARALLEL_VECTOR_READ_MAX_CHUNK_SIZE))
+  }
 
   private val optimizerDefaults = Map(
     // this is not accurate because CPU projections do have a cost due to appending values

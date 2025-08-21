@@ -25,13 +25,12 @@ import com.nvidia.spark.rapids.RapidsConf.ParquetFooterReaderType
 import com.nvidia.spark.rapids.RapidsPluginImplicits._
 import com.nvidia.spark.rapids.RmmRapidsRetryIterator.withRetryNoSplit
 import com.nvidia.spark.rapids.filecache.FileCache
-import com.nvidia.spark.rapids.fileio.{FileRangeWithOffset, RapidsFileIO, SeekableInputStream}
+import com.nvidia.spark.rapids.fileio.{FileRangeWithOffset, RapidsFileIO}
 import com.nvidia.spark.rapids.fileio.hadoop.HadoopFileIO
 import com.nvidia.spark.rapids.jni.{DateTimeRebase, ParquetFooter, RmmSpark}
 import com.nvidia.spark.rapids.parquet.ParquetPartitionReader.{CopyRange, LocalCopy, PARQUET_MAGIC}
 import com.nvidia.spark.rapids.shims.{ColumnDefaultValuesShims, GpuParquetCrypto, GpuTypeShims, ShimFilePartitionReaderFactory, SparkShimImpl}
 import com.nvidia.spark.rapids.shims.parquet.{ParquetLegacyNanoAsLongShims, ParquetSchemaClipShims, ParquetStringPredShims}
-
 import java.io.{Closeable, EOFException, FileNotFoundException, IOException, InputStream, OutputStream}
 import java.net.URI
 import java.nio.ByteBuffer
@@ -57,11 +56,11 @@ import org.apache.parquet.schema.{DecimalMetadata, GroupType, LogicalTypeAnnotat
 import org.apache.parquet.schema.LogicalTypeAnnotation.{DateLogicalTypeAnnotation, IntLogicalTypeAnnotation, TimestampLogicalTypeAnnotation}
 import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName
 import org.xerial.snappy.Snappy
-
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
+
 import org.apache.spark.TaskContext
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
@@ -577,7 +576,7 @@ private case class GpuParquetFileFilterHandler(
       throw new RuntimeException(s"$filePath is not a Parquet file (too small length: $fileLen )")
     }
     withResource(new NvtxRange("ReadFooterBytes", NvtxColor.YELLOW)) { _ =>
-      withResource(inputFile.tailRead(8 * 1024 * 1024L)) { buf =>
+      withResource(inputFile.tailRead(Math.min(8 * 1024 * 1024L, inputFile.getLength) )) { buf =>
         val footerLengthPos = buf.getLength - (FOOTER_LENGTH_SIZE + MAGIC.length)
         val magic = new Array[Byte](MAGIC.length)
         buf.getBytes(magic, 0, buf.getLength - MAGIC.length, MAGIC.length)
@@ -1116,11 +1115,13 @@ case class GpuParquetMultiFilePartitionReaderFactory(
     queryUsesInputFile: Boolean)
   extends MultiFilePartitionReaderFactoryBase(sqlConf, broadcastedConf, rapidsConf) {
 
+  private val hadoopFileIOConfig = rapidsConf.hadoopFileIOConfig
   // we make sure we mark this as a transient lazy val, so we only materialize it
   // from a task when we need to create the fileIO instance. This stops a regression
   // when we materialize the hadoop conf eagerly, see:
   // https://github.com/NVIDIA/spark-rapids/issues/13353
-  @transient private lazy val fileIO = new HadoopFileIO(broadcastedConf.value.value)
+  @transient private lazy val fileIO = new HadoopFileIO(broadcastedConf.value.value,
+    hadoopFileIOConfig)
   private val isCaseSensitive = sqlConf.caseSensitiveAnalysis
   private val debugDumpPrefix = rapidsConf.parquetDebugDumpPrefix
   private val debugDumpAlways = rapidsConf.parquetDebugDumpAlways
@@ -1338,7 +1339,8 @@ case class GpuParquetPartitionReaderFactory(
   // from a task when we need to create the fileIO instance. This stops a regression
   // when we materialize the hadoop conf eagerly, see:
   // https://github.com/NVIDIA/spark-rapids/issues/13353
-  @transient private lazy val fileIO = new HadoopFileIO(broadcastedConf.value.value)
+  @transient private lazy val fileIO = new HadoopFileIO(broadcastedConf.value.value,
+    rapidsConf.hadoopFileIOConfig)
   private val isCaseSensitive = sqlConf.caseSensitiveAnalysis
   private val debugDumpPrefix = rapidsConf.parquetDebugDumpPrefix
   private val debugDumpAlways = rapidsConf.parquetDebugDumpAlways
@@ -1509,34 +1511,34 @@ trait ParquetPartitionReaderBase extends Logging with ScanWithMetrics
     org.apache.parquet.format.Util.writeFileMetaData(meta, out)
   }
 
-  private def copyDataRange(
-      range: CopyRange,
-      in: SeekableInputStream,
-      out: HostMemoryOutputStream,
-      copyBuffer: Array[Byte]): Long = {
-    var readTime = 0L
-    var writeTime = 0L
-    if (in.getPos != range.offset) {
-      in.seek(range.offset)
-    }
-    out.seek(range.outputOffset)
-    var bytesLeft = range.length
-    while (bytesLeft > 0) {
-      // downcast is safe because copyBuffer.length is an int
-      val readLength = Math.min(bytesLeft, copyBuffer.length).toInt
-      val start = System.nanoTime()
-      IOUtils.readFully(in, copyBuffer, 0, readLength)
-      val mid = System.nanoTime()
-      out.write(copyBuffer, 0, readLength)
-      val end = System.nanoTime()
-      readTime += (mid - start)
-      writeTime += (end - mid)
-      bytesLeft -= readLength
-    }
-    execMetrics.get(READ_FS_TIME).foreach(_.add(readTime))
-    execMetrics.get(WRITE_BUFFER_TIME).foreach(_.add(writeTime))
-    range.length
-  }
+//  private def copyDataRange(
+//      range: CopyRange,
+//      in: SeekableInputStream,
+//      out: HostMemoryOutputStream,
+//      copyBuffer: Array[Byte]): Long = {
+//    var readTime = 0L
+//    var writeTime = 0L
+//    if (in.getPos != range.offset) {
+//      in.seek(range.offset)
+//    }
+//    out.seek(range.outputOffset)
+//    var bytesLeft = range.length
+//    while (bytesLeft > 0) {
+//      // downcast is safe because copyBuffer.length is an int
+//      val readLength = Math.min(bytesLeft, copyBuffer.length).toInt
+//      val start = System.nanoTime()
+//      IOUtils.readFully(in, copyBuffer, 0, readLength)
+//      val mid = System.nanoTime()
+//      out.write(copyBuffer, 0, readLength)
+//      val end = System.nanoTime()
+//      readTime += (mid - start)
+//      writeTime += (end - mid)
+//      bytesLeft -= readLength
+//    }
+//    execMetrics.get(READ_FS_TIME).foreach(_.add(readTime))
+//    execMetrics.get(WRITE_BUFFER_TIME).foreach(_.add(writeTime))
+//    range.length
+//  }
 
   /**
    * Computes new block metadata to reflect where the blocks and columns will appear in the
@@ -1907,19 +1909,22 @@ trait ParquetPartitionReaderBase extends Logging with ScanWithMetrics
         conf, out.buffer, filePath.toUri,
         coalescedRanges.map(r => IntRangeWithOffset(r.offset, r.length, r.outputOffset))
       ).getOrElse {
-        withResource(fileIO.newInputFile(filePath).open()) { in =>
-          val copyBuffer: Array[Byte] = new Array[Byte](copyBufferSize)
-          coalescedRanges.foldLeft(0L) { (acc, blockCopy) =>
-            acc + copyDataRange(blockCopy, in, out, copyBuffer)
-          }
+        metrics.getOrElse(GpuMetric.READ_FS_TIME, NoopMetric).ns {
+          val offsets = remoteCopies
+            .map(c => new FileRangeWithOffset(c.offset, toIntExact(c.length), c.outputOffset))
+            .asJava
+
+          fileIO.newInputFile(filePath).vectorRead(out.buffer, offsets)
         }
       }
     } else {
-      val offsets = remoteCopies
-        .map(c => new FileRangeWithOffset(c.offset, toIntExact(c.length), c.outputOffset))
-        .asJava
+      metrics.getOrElse(GpuMetric.READ_FS_TIME, NoopMetric).ns {
+        val offsets = remoteCopies
+          .map(c => new FileRangeWithOffset(c.offset, toIntExact(c.length), c.outputOffset))
+          .asJava
 
-      fileIO.newInputFile(filePath).vectorRead(out.buffer, offsets)
+        fileIO.newInputFile(filePath).vectorRead(out.buffer, offsets)
+      }
     }
 
     // try to cache the remote ranges that were copied
