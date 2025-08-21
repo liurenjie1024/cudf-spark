@@ -77,7 +77,7 @@ def setup_base_iceberg_table(spark_tmp_table_factory,
         df.createOrReplaceTempView(tmp_view_name)
         spark.sql(f"CREATE TABLE {table_name} USING ICEBERG "
                   f"TBLPROPERTIES ({table_prop_sql}) "
-                  f"PARTITIONED BY (bucket(16, _c2), bucket(16, _c3)) "
+                  f"PARTITIONED BY (bucket(4, _c2), bucket(2, _c3)) "
                   f"AS SELECT * FROM {tmp_view_name}")
         # Create this branch to keep unmodified table
         spark.sql(f"ALTER TABLE {table_name} CREATE BRANCH `base-branch`")
