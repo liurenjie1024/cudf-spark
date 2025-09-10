@@ -42,6 +42,11 @@ import static com.google.common.base.Preconditions.checkArgument;
  * for reading the file.
  */
 public class HadoopInputFile implements RapidsInputFile {
+
+  private static final int THREAD_LOCAL_BUFFER_LEN = 8 * 1024 * 1024;
+  private static final ThreadLocal<byte[]> bufferHolder =
+      ThreadLocal.withInitial(() -> new byte[THREAD_LOCAL_BUFFER_LEN]);
+
   private final Path filePath;
   private final FileSystem fs;
   private final long length;
@@ -128,8 +133,7 @@ public class HadoopInputFile implements RapidsInputFile {
       tasks.add(service.submit(() -> {
         try (FSDataInputStream fin = fs.open(filePath)) {
           // Read the data into the destination buffer
-          fin.readFully(range.getStartPos(), dest.asByteBuffer(range.getDestOffset(),
-              range.getLength()));
+          readFully(fin, range.getStartPos(), range.getLength(), dest, range.getDestOffset());
           return range.getLength();
         } catch (IOException e) {
           throw new RuntimeException("Error reading from file: " + filePath, e);
@@ -162,12 +166,24 @@ public class HadoopInputFile implements RapidsInputFile {
     try (FSDataInputStream fin = fs.open(filePath)) {
       for (FileRangeWithOffset range : coalescedRanges) {
         // Read the data into the destination buffer
-        fin.readFully(range.getStartPos(), dest.asByteBuffer(range.getDestOffset(),
-            range.getLength()));
+        readFully(fin, range.getStartPos(), range.getLength(), dest, range.getDestOffset());
         bytesCopied += range.getLength();
       }
 
       return bytesCopied;
+    }
+  }
+
+  private static void readFully(FSDataInputStream fin, long srcPos,
+      int len, HostMemoryBuffer dest, long destPos) throws IOException {
+    int remaining = len;
+    byte[] buffer = bufferHolder.get();
+    while (remaining > 0) {
+      int alreadyRead = (len - remaining);
+      int toRead = Math.min(remaining, buffer.length);
+      fin.readFully(srcPos + alreadyRead, buffer, 0, toRead);
+      dest.setBytes(destPos + alreadyRead, buffer, 0, toRead);
+      remaining -= toRead;
     }
   }
 }
