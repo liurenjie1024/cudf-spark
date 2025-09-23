@@ -60,8 +60,8 @@ trait GpuRollingFileWriter[W <: FileWriter[SpillableColumnarBatch, R], R] extend
   }
 
   protected def openCurrentWriter(): Unit = {
-    require(currentWriter == null,
-      "Current writer should be null when opening a new writer")
+    require(currentWriter.isEmpty,
+      "Current writer should be empty when opening a new writer")
 
     currentFile = Some(newFile())
     currentWriter = Some(newWriter(currentFile.get))
