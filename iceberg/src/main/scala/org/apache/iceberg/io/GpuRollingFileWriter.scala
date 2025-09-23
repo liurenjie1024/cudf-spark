@@ -14,9 +14,9 @@ trait GpuRollingFileWriter[W <: FileWriter[SpillableColumnarBatch, R], R] extend
   val spec: PartitionSpec
   val partition: StructLike
 
-  private var currentFile: EncryptedOutputFile = _
+  private var currentFile: Option[EncryptedOutputFile] = None
   private var currentFileRows: Long = 0L
-  private var currentWriter: W = _
+  private var currentWriter: Option[W] = None
 
   private var closed: Boolean = false
 
@@ -34,7 +34,7 @@ trait GpuRollingFileWriter[W <: FileWriter[SpillableColumnarBatch, R], R] extend
       throw new IllegalStateException("Cannot write to a closed writer")
     }
 
-    currentWriter.write(batch)
+    currentWriter.get.write(batch)
     currentFileRows += batch.numRows()
 
     if (currentFileRows >= targetFileSize) {
@@ -47,8 +47,8 @@ trait GpuRollingFileWriter[W <: FileWriter[SpillableColumnarBatch, R], R] extend
     require(currentWriter == null,
       "Current writer should be null when opening a new writer")
 
-    currentFile = newFile()
-    currentWriter = newWriter(currentFile)
+    currentFile = Some(newFile())
+    currentWriter = Some(newWriter(currentFile.get))
     currentFileRows = 0L
   }
 
@@ -61,17 +61,18 @@ trait GpuRollingFileWriter[W <: FileWriter[SpillableColumnarBatch, R], R] extend
   }
 
   private def closeCurrentWriter(): Unit = {
-    if (currentWriter != null) {
-        currentWriter.close()
+    currentWriter.foreach { w =>
+      w.close()
 
       if (currentFileRows == 0L) {
-        io.deleteFile(currentFile.encryptingOutputFile)
+        io.deleteFile(currentFile.get.encryptingOutputFile)
       } else {
-        addResult(currentWriter.result())
+        addResult(w.result())
       }
-      this.currentFile = null
+
+      this.currentFile = None
       this.currentFileRows = 0
-      this.currentWriter = null
+      this.currentWriter = None
     }
   }
 

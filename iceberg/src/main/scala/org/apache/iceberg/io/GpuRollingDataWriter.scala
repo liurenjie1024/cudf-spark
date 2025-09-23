@@ -3,7 +3,6 @@ package org.apache.iceberg.io
 import java.util.{List => JList}
 
 import com.nvidia.spark.rapids.SpillableColumnarBatch
-
 import org.apache.iceberg.{DataFile, PartitionSpec, StructLike}
 import org.apache.iceberg.encryption.EncryptedOutputFile
 import org.apache.iceberg.relocated.com.google.common.collect.Lists
@@ -27,7 +26,7 @@ class GpuRollingDataWriter(
   }
 
   protected override def addResult(result: DataWriteResult): Unit = {
-    dataFiles.add(result.dataFiles())
+    dataFiles.addAll(result.dataFiles())
   }
 
   protected override def aggregatedResult(): DataWriteResult = {
