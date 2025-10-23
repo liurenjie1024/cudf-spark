@@ -296,7 +296,8 @@ com.amazonaws:aws-java-sdk-bundle:${AWS_SDK_BUNDLE_VERSION}"
     # Please refer to integration_tests/README.md#run-apache-iceberg-s3tables-tests
     env \
       ICEBERG_TEST_REMOTE_CATALOG=1 \
-      PYSP_TEST_spark_driver_memory="12G" \
+      PYSP_TEST_spark_driver_memory="64g" \
+      PYSP_TEST_spark_executor_memory="64g" \
       PYSP_TEST_spark_jars_packages="${ICEBERG_S3TABLES_JARS}" \
       PYSP_TEST_spark_jars_repositories="${PROJECT_REPO}" \
       PYSP_TEST_spark_sql_extensions="org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions" \
