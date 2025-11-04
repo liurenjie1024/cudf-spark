@@ -61,13 +61,13 @@ object GpuTransform {
     if (transform.startsWith("bucket")) {
       val bucket = transform.substring("bucket[".length, transform.length - 1).toInt
       GpuBucket(bucket)
-    } if (transform.startsWith("year")) {
+    } else if (transform.startsWith("year")) {
       GpuYears
-    } if (transform.startsWith("month")) {
+    } else if (transform.startsWith("month")) {
       GpuMonths
-    } if (transform.startsWith("day")) {
+    } else if (transform.startsWith("day")) {
       GpuDays
-    } if (transform.startsWith("hour")) {
+    } else if (transform.startsWith("hour")) {
       GpuHours
     } else {
       throw new IllegalArgumentException(s"Unsupported transform: $transform")
