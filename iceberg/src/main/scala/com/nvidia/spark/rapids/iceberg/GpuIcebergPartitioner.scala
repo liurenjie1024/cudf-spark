@@ -170,8 +170,11 @@ class GpuIcebergPartitioner(val spec: PartitionSpec,
 
     GpuTransform(transform.toString) match {
       // bucket transform is like "bucket[16]"
-      case GpuBucket(bucket) =>
-        GpuBucketExpression(GpuLiteral.create(bucket), inputRefExpr)
+      case GpuBucket(bucket) => GpuBucketExpression(GpuLiteral.create(bucket), inputRefExpr)
+      case GpuYears => GpuYearsExpression(inputRefExpr)
+      case GpuMonths => GpuMonthsExpression(inputRefExpr)
+      case GpuDays => GpuDaysExpression(inputRefExpr)
+      case GpuHours => GpuHoursExpression(inputRefExpr)
     }
   }
 }
