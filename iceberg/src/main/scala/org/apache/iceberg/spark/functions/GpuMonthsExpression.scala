@@ -18,9 +18,9 @@ package org.apache.iceberg.spark.functions
 
 import ai.rapids.cudf.ColumnVector
 import com.nvidia.spark.rapids.{GpuUnaryExpression, GpuColumnVector}
-import org.apache.spark.types.{DataType, IntegerType}
-
+import com.nvidia.spark.rapids.jni.DateTimeUtils
 import org.apache.spark.sql.catalyst.expressions.Expression
+import org.apache.spark.sql.types.{DataType, IntegerType}
 
 case class GpuMonthsExpression(child: Expression) extends GpuUnaryExpression {
   override def dataType: DataType = IntegerType
