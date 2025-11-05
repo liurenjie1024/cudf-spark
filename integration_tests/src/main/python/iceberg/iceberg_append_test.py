@@ -65,6 +65,27 @@ def test_insert_into_unpartitioned_table(spark_tmp_table_factory, format_version
         spark_tmp_table_factory,
         lambda table_name: create_iceberg_table(table_name, table_prop=table_prop))
 
+@iceberg
+@ignore_order(local=True)
+@pytest.mark.parametrize("format_version", ["1"], ids=lambda x: f"format_version={x}")
+@pytest.mark.parametrize("write_distribution_mode", ["none"],
+                         ids=lambda x: f"write_distribution_mode={x}")
+@pytest.mark.parametrize("partition_col_sql", [
+    # pytest.param("year(_c8)", id="year"),
+    # pytest.param("month(_c8)", id="month"),
+    pytest.param("day(_c8)", id="day"),
+    # pytest.param("year(_c9)", id="year"),
+    # pytest.param("month(_c9)", id="month"),
+    pytest.param("day(_c9)", id="day"),
+    # pytest.param("hour(_c9)", id="hour"),
+])
+def test_insert_into_partitioned_table1(spark_tmp_table_factory, format_version, write_distribution_mode, partition_col_sql):
+    table_prop = {"format-version": format_version,
+                  "write.distribution-mode": write_distribution_mode}
+
+    do_test_insert_into_table_sql(
+        spark_tmp_table_factory,
+        lambda table_name: create_iceberg_table(table_name, partition_col_sql=partition_col_sql, table_prop=table_prop))
 
 @iceberg
 @ignore_order(local=True)
@@ -197,10 +218,6 @@ def test_insert_into_partitioned_table_all_cols_fallback(spark_tmp_table_factory
 @pytest.mark.parametrize("partition_col_sql", [
     pytest.param("_c2", id="identity"),
     pytest.param("truncate(5, _c6)", id="truncate"),
-    pytest.param("year(_c9)", id="year"),
-    pytest.param("month(_c9)", id="month"),
-    pytest.param("day(_c9)", id="day"),
-    pytest.param("hour(_c9)", id="hour"),
     pytest.param("bucket(8, _c6)", id="bucket_unsupported_type"),
 ])
 def test_insert_into_partitioned_table_unsupported_partition_fallback(

@@ -17,15 +17,33 @@
 package org.apache.iceberg.spark.functions
 
 import ai.rapids.cudf.ColumnVector
-import com.nvidia.spark.rapids.{GpuUnaryExpression, GpuColumnVector}
+import com.nvidia.spark.rapids.{ExprMeta, GpuColumnVector, GpuUnaryExpression}
 import com.nvidia.spark.rapids.jni.DateTimeUtils
+
 import org.apache.spark.sql.catalyst.expressions.Expression
-import org.apache.spark.sql.types.{DataType, IntegerType}
+import org.apache.spark.sql.catalyst.expressions.objects.StaticInvoke
+import org.apache.spark.sql.types.{DataType, IntegerType, TimestampType}
 
 case class GpuHoursExpression(child: Expression) extends GpuUnaryExpression {
   override def dataType: DataType = IntegerType
 
-  override def sql: String = s"hours(${child.sql})"
+  override def sql: String = s"iceberg.hours(${child.sql})"
 
   override def doColumnar(input: GpuColumnVector): ColumnVector = DateTimeUtils.computeHourDiff(input.getBase);
+}
+
+object GpuHoursExpression {
+
+  def tagExprForGpu(meta: ExprMeta[StaticInvoke]): Unit = {
+    val valueExpr = meta.wrapped.arguments.head
+    if (valueExpr.nullable) {
+      meta.willNotWorkOnGpu(s"Gpu hours function does not support nullable values for type " +
+          s"${valueExpr.dataType}")
+    }
+
+    if (valueExpr.dataType != TimestampType) {
+      meta.willNotWorkOnGpu(s"Gpu hours function does not support type ${valueExpr.dataType} " +
+          s"as values")
+    }
+  }
 }

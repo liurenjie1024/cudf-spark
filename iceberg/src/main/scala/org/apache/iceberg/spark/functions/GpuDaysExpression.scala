@@ -17,15 +17,42 @@
 package org.apache.iceberg.spark.functions
 
 import ai.rapids.cudf.ColumnVector
-import com.nvidia.spark.rapids.{GpuUnaryExpression, GpuColumnVector}
+import com.nvidia.spark.rapids.{ExprMeta, GpuColumnVector, GpuUnaryExpression}
 import com.nvidia.spark.rapids.jni.DateTimeUtils
+
 import org.apache.spark.sql.catalyst.expressions.Expression
-import org.apache.spark.sql.types.{DataType, IntegerType}
+import org.apache.spark.sql.catalyst.expressions.objects.StaticInvoke
+import org.apache.spark.sql.types.{DataType, DateType}
 
 case class GpuDaysExpression(child: Expression) extends GpuUnaryExpression {
-  override def dataType: DataType = IntegerType
+  override def dataType: DataType = DateType
 
-  override def sql: String = s"days(${child.sql})"
+  override def sql: String = s"iceberg.days(${child.sql})"
 
-  override def doColumnar(input: GpuColumnVector): ColumnVector = DateTimeUtils.computeDayDiff(input.getBase);
+  override def doColumnar(input: GpuColumnVector): ColumnVector = {
+    if (input.dataType() == DateType) {
+      // no need to compute, simply return the copy
+      input.getBase.incRefCount()
+    } else {
+      val r = DateTimeUtils.computeDayDiff(input.getBase)
+      println("mydebug: " + r.getType)
+      r
+    }
+  }
+}
+
+object GpuDaysExpression {
+
+  def tagExprForGpu(meta: ExprMeta[StaticInvoke], expectedDataType: DataType): Unit = {
+    val valueExpr = meta.wrapped.arguments.head
+    if (valueExpr.nullable) {
+      meta.willNotWorkOnGpu(s"Gpu days function does not support nullable values for type " +
+          s"${valueExpr.dataType}")
+    }
+
+    if (valueExpr.dataType != expectedDataType) {
+      meta.willNotWorkOnGpu(s"Gpu days function does not support type ${valueExpr.dataType} " +
+          s"as values")
+    }
+  }
 }
