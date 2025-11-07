@@ -18,7 +18,7 @@ package org.apache.iceberg.spark.functions
 
 import ai.rapids.cudf.ColumnVector
 import com.nvidia.spark.rapids.{ExprMeta, GpuColumnVector, GpuUnaryExpression}
-import com.nvidia.spark.rapids.jni.DateTimeUtils
+import com.nvidia.spark.rapids.jni.iceberg.IcebergDateTimeUtil
 
 import org.apache.spark.sql.catalyst.expressions.Expression
 import org.apache.spark.sql.catalyst.expressions.objects.StaticInvoke
@@ -34,7 +34,7 @@ case class GpuDaysExpression(child: Expression) extends GpuUnaryExpression {
       // no need to compute, simply return the copy
       input.getBase.incRefCount()
     } else {
-      val r = DateTimeUtils.computeDayDiff(input.getBase)
+      val r = IcebergDateTimeUtil.toDays(input.getBase)
       println("mydebug: " + r.getType)
       r
     }
@@ -47,12 +47,12 @@ object GpuDaysExpression {
     val valueExpr = meta.wrapped.arguments.head
     if (valueExpr.nullable) {
       meta.willNotWorkOnGpu(s"Gpu days function does not support nullable values for type " +
-          s"${valueExpr.dataType}")
+        s"${valueExpr.dataType}")
     }
 
     if (valueExpr.dataType != expectedDataType) {
       meta.willNotWorkOnGpu(s"Gpu days function does not support type ${valueExpr.dataType} " +
-          s"as values")
+        s"as values")
     }
   }
 }
