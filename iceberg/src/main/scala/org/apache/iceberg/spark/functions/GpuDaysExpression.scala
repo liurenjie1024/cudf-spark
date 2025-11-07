@@ -36,6 +36,7 @@ case class GpuDaysExpression(child: Expression) extends GpuUnaryExpression {
     } else {
       val r = IcebergDateTimeUtil.toDays(input.getBase)
       println("mydebug: " + r.getType)
+      r
     }
   }
 }

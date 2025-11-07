@@ -199,8 +199,9 @@ object GpuIcebergPartitioner {
 
       val hostColsArray = closeOnExcept(new Array[ColumnVector](numCols)) { hostCols =>
         for (colIdx <- 0 until numCols) {
-          hostCols(colIdx) = new RapidsHostColumnVector(sparkType.fields(colIdx).dataType,
-            gpuBatch.column(colIdx).asInstanceOf[GpuColumnVector].copyToHost())
+          hostCols(colIdx) = gpuBatch.column(colIdx)
+            .asInstanceOf[GpuColumnVector]
+            .copyToHost()
         }
         hostCols
       }
