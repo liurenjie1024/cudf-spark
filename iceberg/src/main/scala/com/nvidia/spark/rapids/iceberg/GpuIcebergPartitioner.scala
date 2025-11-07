@@ -192,24 +192,28 @@ object GpuIcebergPartitioner {
     sparkType: StructType,
     table: Table): Array[SparkStructLike] = {
     System.err.println(s"Partition types, iceberg: $icebergType, spark: $sparkType")
-    val numCols = table.getNumberOfColumns
-    val numRows = toIntExact(table.getRowCount)
 
-    val hostColsArray = closeOnExcept(new Array[ColumnVector](numCols)) { hostCols =>
-      for (colIdx <- 0 until numCols) {
-        hostCols(colIdx) = new RapidsHostColumnVector(sparkType.fields(colIdx).dataType,
-          table.getColumn(colIdx).copyToHost())
+    withResource(GpuColumnVector.from(table, sparkType.fields.map(_.dataType))) { gpuBatch =>
+      val numCols = table.getNumberOfColumns
+      val numRows = toIntExact(table.getRowCount)
+
+      val hostColsArray = closeOnExcept(new Array[ColumnVector](numCols)) { hostCols =>
+        for (colIdx <- 0 until numCols) {
+          hostCols(colIdx) = new RapidsHostColumnVector(sparkType.fields(colIdx).dataType,
+            gpuBatch.column(colIdx).asInstanceOf[GpuColumnVector].copyToHost())
+        }
+        hostCols
       }
-      hostCols
-    }
 
-    withResource(new ColumnarBatch(hostColsArray, numRows)) { hostBatch =>
+
+      withResource(new ColumnarBatch(hostColsArray, numRows)) { hostBatch =>
         hostBatch.rowIterator()
           .asScala
           .map(internalRow => {
             val row = new GenericRowWithSchema(internalRow.toSeq(sparkType).toArray, sparkType)
             new SparkStructLike(icebergType).wrap(row)
           }).toArray
+      }
     }
   }
 }
