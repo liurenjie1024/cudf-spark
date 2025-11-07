@@ -76,7 +76,7 @@ def test_insert_into_unpartitioned_table(spark_tmp_table_factory, format_version
     pytest.param("day(_c8)", id="day"),
     # pytest.param("year(_c9)", id="year"),
     # pytest.param("month(_c9)", id="month"),
-    pytest.param("day(_c9)", id="day"),
+    pytest.param("day(_c9)", id="day9"),
     # pytest.param("hour(_c9)", id="hour"),
 ])
 def test_insert_into_partitioned_table1(spark_tmp_table_factory, format_version, write_distribution_mode, partition_col_sql):

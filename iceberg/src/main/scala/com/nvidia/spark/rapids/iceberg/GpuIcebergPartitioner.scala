@@ -191,6 +191,7 @@ object GpuIcebergPartitioner {
   private def toPartitionKeys(icebergType: Types.StructType,
     sparkType: StructType,
     table: Table): Array[SparkStructLike] = {
+    System.err.println(s"Partition types, iceberg: $icebergType, spark: $sparkType")
     val numCols = table.getNumberOfColumns
     val numRows = toIntExact(table.getRowCount)
 
