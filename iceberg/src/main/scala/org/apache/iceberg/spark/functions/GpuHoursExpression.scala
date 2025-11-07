@@ -18,7 +18,7 @@ package org.apache.iceberg.spark.functions
 
 import ai.rapids.cudf.ColumnVector
 import com.nvidia.spark.rapids.{ExprMeta, GpuColumnVector, GpuUnaryExpression}
-import com.nvidia.spark.rapids.jni.DateTimeUtils
+import com.nvidia.spark.rapids.jni.iceberg.IcebergDateTimeUtil
 
 import org.apache.spark.sql.catalyst.expressions.Expression
 import org.apache.spark.sql.catalyst.expressions.objects.StaticInvoke
@@ -29,7 +29,8 @@ case class GpuHoursExpression(child: Expression) extends GpuUnaryExpression {
 
   override def sql: String = s"iceberg.hours(${child.sql})"
 
-  override def doColumnar(input: GpuColumnVector): ColumnVector = DateTimeUtils.computeHourDiff(input.getBase);
+  override def doColumnar(input: GpuColumnVector): ColumnVector =
+    IcebergDateTimeUtil.toHours(input.getBase);
 }
 
 object GpuHoursExpression {
@@ -38,12 +39,12 @@ object GpuHoursExpression {
     val valueExpr = meta.wrapped.arguments.head
     if (valueExpr.nullable) {
       meta.willNotWorkOnGpu(s"Gpu hours function does not support nullable values for type " +
-          s"${valueExpr.dataType}")
+        s"${valueExpr.dataType}")
     }
 
     if (valueExpr.dataType != TimestampType) {
       meta.willNotWorkOnGpu(s"Gpu hours function does not support type ${valueExpr.dataType} " +
-          s"as values")
+        s"as values")
     }
   }
 }
