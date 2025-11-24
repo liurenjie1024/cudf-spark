@@ -196,7 +196,13 @@ private class ColumnarBatchHandler(private val processor: GpuParquetReaderPostPr
         // switch to next block
         processor.curBlockIndex += 1
         processor.processedBlockRowCounts += curBlockRowCount
-        curRowPos = processor.parquetInfo.blocksFirstRowIndices(processor.curBlockIndex)
+        try {
+          curRowPos = processor.parquetInfo.blocksFirstRowIndices(processor.curBlockIndex)
+        } catch {
+          case t: IndexOutOfBoundsException =>
+            throw new RuntimeException(s"Parquet path: ${processor.parquetInfo.filePath}, " +
+              s"Block size: ${processor.parquetInfo.blocksFirstRowIndices.size}", t)
+        }
 
         curBlockRowCount = processor.parquetInfo.blocks(processor.curBlockIndex).getRowCount
         curBlockRowStart = processor.parquetInfo.blocksFirstRowIndices(processor.curBlockIndex)
