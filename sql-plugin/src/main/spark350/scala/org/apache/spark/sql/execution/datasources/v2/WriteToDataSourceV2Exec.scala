@@ -30,9 +30,11 @@ spark-rapids-shim-json-lines ***/
 package org.apache.spark.sql.execution.datasources.v2
 
 import ai.rapids.cudf.{ColumnVector => CudfColumnVector, Scalar => CudfScalar}
+
 import com.nvidia.spark.rapids.{GpuColumnVector, GpuColumnarToRowExec, GpuExec, GpuMetric, GpuRowToColumnarExec, GpuWrite}
 import com.nvidia.spark.rapids.Arm.{closeOnExcept, withResource}
 import com.nvidia.spark.rapids.RmmRapidsRetryIterator.withRetryNoSplit
+
 import org.apache.spark.{SparkEnv, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
@@ -84,9 +86,16 @@ trait GpuV2TableWriteExec extends V2CommandExec with UnaryExecNode with GpuExec 
   override def child: SparkPlan = query
   override def output: Seq[Attribute] = Seq.empty
 
+  private lazy val finalQuery: SparkPlan = {
+    query match {
+      case c2r: GpuColumnarToRowExec => c2r.child
+      case GpuRowToColumnarExec(aqe: AdaptiveSparkPlanExec, _) => aqe
+    }
+  }
+
   protected def writeWithV2(batchWrite: BatchWrite): Seq[InternalRow] = {
     val rdd: RDD[ColumnarBatch] = {
-      val tempRdd = query.executeColumnar()
+      val tempRdd = finalQuery.executeColumnar()
       // SPARK-23271 If we are attempting to write a zero partition rdd, create a dummy single
       // partition rdd to make sure we at least set up one write task to write the metadata.
       if (tempRdd.partitions.length == 0) {
@@ -250,12 +259,7 @@ case class GpuReplaceDataExec(
 
   override def supportsColumnar: Boolean = false
 
-  override def query: SparkPlan = {
-    inner match {
-      case c2r: GpuColumnarToRowExec => c2r.child
-      case GpuRowToColumnarExec(aqe: AdaptiveSparkPlanExec, _) => aqe
-    }
-  }
+  override def query: SparkPlan = inner
 
   override protected def internalDoExecuteColumnar(): RDD[ColumnarBatch] = {
     throw new IllegalStateException(
