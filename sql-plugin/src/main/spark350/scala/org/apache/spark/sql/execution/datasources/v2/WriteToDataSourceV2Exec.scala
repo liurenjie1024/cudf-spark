@@ -87,16 +87,18 @@ trait GpuV2TableWriteExec extends V2CommandExec with UnaryExecNode with GpuExec 
   override def output: Seq[Attribute] = Seq.empty
 
   private lazy val finalQuery: SparkPlan = {
-    query match {
+    println(s"Query is: $query")
+    val finalQuery = query match {
       case c2r: GpuColumnarToRowExec => c2r.child
       case GpuRowToColumnarExec(aqe@AdaptiveSparkPlanExec(_, _, _, _, _), _) => aqe
       case q => q
     }
+    println(s"Final query is: $finalQuery")
+    finalQuery
   }
 
   protected def writeWithV2(batchWrite: BatchWrite): Seq[InternalRow] = {
     val rdd: RDD[ColumnarBatch] = {
-      println(s"Final query is: ${finalQuery}")
       val tempRdd = finalQuery.executeColumnar()
       // SPARK-23271 If we are attempting to write a zero partition rdd, create a dummy single
       // partition rdd to make sure we at least set up one write task to write the metadata.
