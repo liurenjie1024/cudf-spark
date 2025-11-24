@@ -289,12 +289,7 @@ case class GpuWriteDeltaExec(
 
   override def supportsColumnar: Boolean = false
 
-  override def query: SparkPlan = {
-    inner match {
-      case c2r: GpuColumnarToRowExec => c2r.child
-      case _ => inner
-    }
-  }
+  override def query: SparkPlan = inner
 
   override lazy val writingTask: GpuWritingSparkTask[_] = {
     // Match the CPU implementation: use DeltaWithMetadataWritingSparkTask if metadata
