@@ -89,8 +89,8 @@ trait GpuV2TableWriteExec extends V2CommandExec with UnaryExecNode with GpuExec 
   private lazy val finalQuery: SparkPlan = {
     println(s"Query is: $query")
     val finalQuery = query match {
+      case  GpuColumnarToRowExec(GpuRowToColumnarExec(aqe:AdaptiveSparkPlanExec, _), _) => aqe
       case c2r: GpuColumnarToRowExec => c2r.child
-      case GpuRowToColumnarExec(aqe@AdaptiveSparkPlanExec(_, _, _, _, _), _) => aqe
       case q => q
     }
     println(s"Final query is: $finalQuery")
