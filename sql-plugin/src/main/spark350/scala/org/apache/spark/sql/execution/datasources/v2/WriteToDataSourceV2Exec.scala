@@ -90,6 +90,7 @@ trait GpuV2TableWriteExec extends V2CommandExec with UnaryExecNode with GpuExec 
     query match {
       case c2r: GpuColumnarToRowExec => c2r.child
       case GpuRowToColumnarExec(aqe: AdaptiveSparkPlanExec, _) => aqe
+      case q => q
     }
   }
 
