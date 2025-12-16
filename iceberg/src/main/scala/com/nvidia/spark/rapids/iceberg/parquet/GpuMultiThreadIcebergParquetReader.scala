@@ -113,9 +113,9 @@ class GpuMultiThreadIcebergParquetReader(
       false, // useFieldId
       // We always set this to true to disable combining small files into a larger one
       // as iceberg's parquet file may have different schema due to schema evolution.
-      true, // queryUsesInputFile
+      false, // queryUsesInputFile
       true, // keepReadsInOrder, this is required for iceberg
-      CombineConf(-1, -1)) // Disable combine
+      CombineConf(64 * 1024 * 1024L, 200)) // Disable combine
   }
 
   private def filterBlock(f: PartitionedFile) = {

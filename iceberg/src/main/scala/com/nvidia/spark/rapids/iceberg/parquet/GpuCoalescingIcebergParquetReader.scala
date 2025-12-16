@@ -101,7 +101,8 @@ class GpuCoalescingIcebergParquetReader(
           nextBlockInfo: SingleDataBlockInfo): Boolean = {
         // Iceberg should always use field id for matching columns, so we should always disable
         // coalescing.
-        true
+//        true
+        false
       }
 
       override def finalizeOutputBatch(batch: ColumnarBatch,
