@@ -25,7 +25,7 @@ import org.apache.spark.sql.connector.read.{HasPartitionKey, InputPartition}
 import org.apache.spark.util.SerializableConfiguration
 
 class GpuSparkInputPartition(val cpuPartition: SparkInputPartition,
-    rapidsConf: RapidsConf,
+    @transient rapidsConf: RapidsConf,
     val hadoopConf: Broadcast[SerializableConfiguration],
     val expectedSchemaStr: String) extends
   InputPartition with HasPartitionKey with Serializable {
