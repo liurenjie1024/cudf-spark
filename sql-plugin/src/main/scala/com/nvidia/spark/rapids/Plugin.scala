@@ -34,7 +34,7 @@ import com.nvidia.spark.rapids.RapidsPluginUtils.buildInfoEvent
 import com.nvidia.spark.rapids.ScalableTaskCompletion.onTaskCompletion
 import com.nvidia.spark.rapids.filecache.{FileCache, FileCacheLocalityManager, FileCacheLocalityMsg}
 import com.nvidia.spark.rapids.io.async.TrafficController
-import com.nvidia.spark.rapids.jni.{GpuTimeZoneDB, RmmSpark, TaskPriority}
+import com.nvidia.spark.rapids.jni.{GpuTimeZoneDB, Hash, RmmSpark, TaskPriority}
 import com.nvidia.spark.rapids.python.PythonWorkerSemaphore
 import org.apache.commons.lang3.exception.ExceptionUtils
 
@@ -471,6 +471,7 @@ class RapidsDriverPlugin extends DriverPlugin with Logging {
 
   override def init(
     sc: SparkContext, pluginContext: PluginContext): java.util.Map[String, String] = {
+    logInfo(s"Max stack size is: ${Hash.MAX_STACK_DEPTH}")
     val sparkConf = pluginContext.conf
     RapidsPluginUtils.fixupConfigsOnDriver(sparkConf)
     val conf = new RapidsConf(sparkConf)
