@@ -24,6 +24,7 @@ import com.nvidia.spark.rapids.GpuTypedImperativeSupportedAggregateExecMeta.{pre
 import com.nvidia.spark.rapids.RapidsMeta.noNeedToReplaceReason
 import com.nvidia.spark.rapids.shims.{DistributionUtil, SparkShimImpl}
 
+import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, BinaryExpression, Cast, ComplexTypeMergingExpression, Expression, QuaternaryExpression, RuntimeReplaceable, String2TrimExpression, TernaryExpression, TimeZoneAwareExpression, UTCTimestamp, UnaryExpression, WindowExpression, WindowFunction}
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, AggregateFunction, ImperativeAggregate, TypedImperativeAggregate}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
@@ -294,7 +295,6 @@ abstract class RapidsMeta[INPUT <: BASE, BASE, OUTPUT <: BASE](
    * [[tagSelfForGpu]]
    */
   final def tagForGpu(): Unit = {
-    val start = System.nanoTime()
     childScans.foreach(_.tagForGpu())
     childParts.foreach(_.tagForGpu())
     childExprs.foreach(_.tagForGpu())
