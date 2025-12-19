@@ -1223,7 +1223,7 @@ abstract class BaseExprMeta[INPUT <: Expression](
       checkExprForTimezone()
     }
 
-    GpuOverrides.logDuration(shouldLog = true, t => "tagExprForGpu took $t ms") {
+    GpuOverrides.logDuration(shouldLog = true, t => s"tagExprForGpu took $t ms") {
       tagExprForGpu()
     }
   }
