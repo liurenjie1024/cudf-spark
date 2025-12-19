@@ -23,6 +23,7 @@ import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
 import ai.rapids.cudf.DType
+import com.nvidia.spark.rapids.GpuOverrides.logDuration
 import com.nvidia.spark.rapids.RapidsConf.{SUPPRESS_PLANNING_FAILURE, TEST_CONF}
 import com.nvidia.spark.rapids.jni.GpuTimeZoneDB
 import com.nvidia.spark.rapids.jni.Hash
@@ -4934,10 +4935,22 @@ case class GpuOverrides() extends Rule[SparkPlan] with Logging {
     if (conf.isSqlEnabled && conf.isSqlExecuteOnGPU) {
       GpuOverrides.logDuration(conf.shouldExplain,
         t => f"Plan conversion to the GPU took $t%.2f ms") {
-        var updatedPlan = updateForAdaptivePlan(plan, conf)
-        updatedPlan = HybridExecutionUtils.tryToApplyHybridScanRules(updatedPlan, conf)
-        updatedPlan = SparkShimImpl.applyShimPlanRules(updatedPlan, conf)
-        updatedPlan = applyOverrides(updatedPlan, conf)
+        var updatedPlan = GpuOverrides.logDuration(shouldLog = true,
+          t => f"Gpu updateForAdaptivePlan took $t%.2f ms") {
+          updateForAdaptivePlan(plan, conf)
+        }
+        updatedPlan = GpuOverrides.logDuration(shouldLog = true,
+          t => f"Gpu tryToApplyHybridScanRules took $t%.2f ms") {
+          HybridExecutionUtils.tryToApplyHybridScanRules(updatedPlan, conf)
+        }
+        updatedPlan = GpuOverrides.logDuration(shouldLog = true,
+          t => f"Gpu applyShimPlanRules took $t%.2f ms") {
+          SparkShimImpl.applyShimPlanRules(updatedPlan, conf)
+        }
+        updatedPlan = GpuOverrides.logDuration(shouldLog = true,
+          t => f"Gpu applyOverrides took $t%.2f ms") {
+          applyOverrides(updatedPlan, conf)
+        }
         if (conf.logQueryTransformations) {
           val logPrefix = context.map(str => s"[$str]").getOrElse("")
           logWarning(s"${logPrefix}Transformed query:" +
