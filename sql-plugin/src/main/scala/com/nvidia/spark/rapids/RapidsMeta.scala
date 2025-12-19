@@ -24,7 +24,7 @@ import com.nvidia.spark.rapids.GpuTypedImperativeSupportedAggregateExecMeta.{pre
 import com.nvidia.spark.rapids.RapidsMeta.noNeedToReplaceReason
 import com.nvidia.spark.rapids.shims.{DistributionUtil, SparkShimImpl}
 
-import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, BinaryExpression, Cast, ComplexTypeMergingExpression, Expression, QuaternaryExpression, RuntimeReplaceable, String2TrimExpression, TernaryExpression, TimeZoneAwareExpression, UTCTimestamp, UnaryExpression, WindowExpression, WindowFunction}
+import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, BinaryExpression, Cast, ComplexTypeMergingExpression, Expression, QuaternaryExpression, RuntimeReplaceable, String2TrimExpression, TernaryExpression, TimeZoneAwareExpression, UnaryExpression, UTCTimestamp,  WindowExpression, WindowFunction}
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, AggregateFunction, ImperativeAggregate, TypedImperativeAggregate}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.catalyst.trees.{TreeNodeTag, UnaryLike}
@@ -89,7 +89,7 @@ abstract class RapidsMeta[INPUT <: BASE, BASE, OUTPUT <: BASE](
     val wrapped: INPUT,
     val conf: RapidsConf,
     val parent: Option[RapidsMeta[_, _, _]],
-    rule: DataFromReplacementRule) extends Logging  {
+    rule: DataFromReplacementRule) {
 
   /**
    * The wrapped plans that should be examined
@@ -294,7 +294,6 @@ abstract class RapidsMeta[INPUT <: BASE, BASE, OUTPUT <: BASE](
    * [[tagSelfForGpu]]
    */
   final def tagForGpu(): Unit = {
-    val start = System.nanoTime()
     childScans.foreach(_.tagForGpu())
     childParts.foreach(_.tagForGpu())
     childExprs.foreach(_.tagForGpu())
@@ -321,10 +320,7 @@ abstract class RapidsMeta[INPUT <: BASE, BASE, OUTPUT <: BASE](
       }
     }
 
-    GpuOverrides.logDuration(shouldLog = true, t => s"Tag for self took $t ms, class " +
-      s"is: ${wrapped.getClass} ") {
-      tagSelfForGpu()
-    }
+    tagSelfForGpu()
   }
 
   /**
