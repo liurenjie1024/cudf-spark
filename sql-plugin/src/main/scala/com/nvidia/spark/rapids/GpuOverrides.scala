@@ -5071,10 +5071,7 @@ case class GpuOverrides() extends Rule[SparkPlan] with Logging {
   }
 
   private def applyOverrides(plan: SparkPlan, conf: RapidsConf): SparkPlan = {
-    val wrap = GpuOverrides.logDuration(shouldLog = true,
-      t => f"GpuOverrides.wrapAndTagPlan took $t%.2f ms" ) {
-      GpuOverrides.wrapAndTagPlan(plan, conf)
-    }
+    val wrap = GpuOverrides.wrapAndTagPlan(plan, conf)
     val detectDeltaCheckpoint = conf.isDetectDeltaCheckpointQueries
     if (conf.isDetectDeltaLogQueries && isDeltaLakeMetadataQuery(plan, detectDeltaCheckpoint)) {
       wrap.entirePlanWillNotWork("Delta Lake metadata queries are not efficient on GPU")
@@ -5087,14 +5084,8 @@ case class GpuOverrides() extends Rule[SparkPlan] with Logging {
       }
       plan
     } else {
-      val optimizations = GpuOverrides.logDuration(shouldLog = true,
-        t => f"GpuOverrides.getOptimizations took $t%.2f ms" ) {
-        GpuOverrides.getOptimizations(wrap, conf)
-      }
-      GpuOverrides.logDuration(shouldLog = true,
-        t => f"wrap.runAfterTagRules $t%.2f ms" ) {
-        wrap.runAfterTagRules()
-      }
+      val optimizations = GpuOverrides.getOptimizations(wrap, conf)
+      wrap.runAfterTagRules()
       if (conf.shouldExplain) {
         wrap.tagForExplain()
         val explain = wrap.explain(conf.shouldExplainAll)
@@ -5105,14 +5096,11 @@ case class GpuOverrides() extends Rule[SparkPlan] with Logging {
           }
         }
       }
-      val convertedPlan = GpuOverrides.logDuration(shouldLog = true,
-        t => f"GpuOverrides.doConvertPlan took $t%.2f ms" ) {
-        GpuOverrides.doConvertPlan(wrap, conf, optimizations)
-        if (conf.isTagLoreIdEnabled) {
-          GpuLore.tagForLore(convertedPlan, conf)
-        } else {
-          convertedPlan
-        }
+      val convertedPlan = GpuOverrides.doConvertPlan(wrap, conf, optimizations)
+      if (conf.isTagLoreIdEnabled) {
+        GpuLore.tagForLore(convertedPlan, conf)
+      } else {
+        convertedPlan
       }
     }
   }
