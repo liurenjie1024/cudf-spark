@@ -18,7 +18,6 @@ package com.nvidia.spark.rapids.iceberg
 
 import scala.reflect.ClassTag
 import scala.util.Try
-
 import com.nvidia.spark.rapids.{AppendDataExecMeta, AtomicCreateTableAsSelectExecMeta, AtomicReplaceTableAsSelectExecMeta, FileFormatChecks, GpuExec, GpuExpression, GpuScan, IcebergFormatType, OverwriteByExpressionExecMeta, OverwritePartitionsDynamicExecMeta, RapidsConf, ScanMeta, ScanRule, ShimReflectionUtils, SparkPlanMeta, StaticInvokeMeta, WriteFileOp}
 import com.nvidia.spark.rapids.iceberg.IcebergProviderImpl.checkChildPlan
 import com.nvidia.spark.rapids.shims.{ReplaceDataExecMeta, WriteDeltaExecMeta}
@@ -27,7 +26,6 @@ import org.apache.iceberg.spark.functions.{BucketFunction, DaysFunction, GpuBuck
 import org.apache.iceberg.spark.source.{GpuSparkPositionDeltaWrite, GpuSparkScan, GpuSparkWrite}
 import org.apache.iceberg.spark.source.GpuSparkPositionDeltaWrite.tableOf
 import org.apache.iceberg.spark.supportsCatalog
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.expressions.objects.StaticInvoke
 import org.apache.spark.sql.connector.read.Scan
@@ -60,10 +58,9 @@ class IcebergProviderImpl extends IcebergProvider with Logging {
 
           override def convertToGpu(): GpuScan = {
             val start = System.nanoTime()
-            val t = convertedScan.get
+            convertedScan.get
             logInfo(s"Iceberg convert scan for self took: ${(System.nanoTime() - start) /
               1000} ms")
-            t
           }
         },
         "Iceberg batch query scan",
