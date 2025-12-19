@@ -18,6 +18,7 @@ package com.nvidia.spark.rapids.iceberg
 
 import scala.reflect.ClassTag
 import scala.util.Try
+
 import com.nvidia.spark.rapids.{AppendDataExecMeta, AtomicCreateTableAsSelectExecMeta, AtomicReplaceTableAsSelectExecMeta, FileFormatChecks, GpuExec, GpuExpression, GpuScan, IcebergFormatType, OverwriteByExpressionExecMeta, OverwritePartitionsDynamicExecMeta, RapidsConf, ScanMeta, ScanRule, ShimReflectionUtils, SparkPlanMeta, StaticInvokeMeta, WriteFileOp}
 import com.nvidia.spark.rapids.iceberg.IcebergProviderImpl.checkChildPlan
 import com.nvidia.spark.rapids.shims.{ReplaceDataExecMeta, WriteDeltaExecMeta}
@@ -26,7 +27,7 @@ import org.apache.iceberg.spark.functions.{BucketFunction, DaysFunction, GpuBuck
 import org.apache.iceberg.spark.source.{GpuSparkPositionDeltaWrite, GpuSparkScan, GpuSparkWrite}
 import org.apache.iceberg.spark.source.GpuSparkPositionDeltaWrite.tableOf
 import org.apache.iceberg.spark.supportsCatalog
-import org.apache.spark.internal.Logging
+
 import org.apache.spark.sql.catalyst.expressions.objects.StaticInvoke
 import org.apache.spark.sql.connector.read.Scan
 import org.apache.spark.sql.connector.write.Write
@@ -36,7 +37,7 @@ import org.apache.spark.sql.execution.datasources.v2.{AppendDataExec, AtomicCrea
 import org.apache.spark.sql.execution.datasources.v2.rapids.{GpuAtomicCreateTableAsSelectExec, GpuAtomicReplaceTableAsSelectExec}
 import org.apache.spark.sql.types.{DateType, TimestampType}
 
-class IcebergProviderImpl extends IcebergProvider with Logging {
+class IcebergProviderImpl extends IcebergProvider {
   override def getScans: Map[Class[_ <: Scan], ScanRule[_ <: Scan]] = {
     val cpuBatchQueryScanClass = ShimReflectionUtils.loadClass(
       IcebergProvider.cpuBatchQueryScanClassName)
@@ -51,17 +52,10 @@ class IcebergProviderImpl extends IcebergProvider with Logging {
           override def supportsRuntimeFilters: Boolean = true
 
           override def tagSelfForGpu(): Unit = {
-            val start = System.nanoTime()
             GpuSparkScan.tagForGpu(this, convertedScan)
-            logInfo(s"Iceberg scan tag for self took: ${(System.nanoTime() - start) / 1000} ms")
           }
 
-          override def convertToGpu(): GpuScan = {
-            val start = System.nanoTime()
-            convertedScan.get
-            logInfo(s"Iceberg convert scan for self took: ${(System.nanoTime() - start) /
-              1000} ms")
-          }
+          override def convertToGpu(): GpuScan = convertedScan.get
         },
         "Iceberg batch query scan",
         ClassTag(cpuBatchQueryScanClass)
