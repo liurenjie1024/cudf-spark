@@ -5107,11 +5107,11 @@ case class GpuOverrides() extends Rule[SparkPlan] with Logging {
       }
       val convertedPlan = GpuOverrides.logDuration(shouldLog = true,
         t => f"GpuOverrides.doConvertPlan took $t%.2f ms" ) {
-        val c = GpuOverrides.doConvertPlan(wrap, conf, optimizations)
+        GpuOverrides.doConvertPlan(wrap, conf, optimizations)
         if (conf.isTagLoreIdEnabled) {
-          GpuLore.tagForLore(c, conf)
+          GpuLore.tagForLore(convertedPlan, conf)
         } else {
-          c
+          convertedPlan
         }
       }
     }
