@@ -55,22 +55,19 @@ class IcebergProviderImpl extends IcebergProvider with Logging {
           override def tagSelfForGpu(): Unit = {
             val start = System.nanoTime()
             GpuSparkScan.tagForGpu(this, convertedScan)
-            logInfo(s"Iceberg scan tag for self took: ${(System.nanoTime() - start) / 1000000} ms")
+            logInfo(s"Iceberg scan tag for self took: ${(System.nanoTime() - start) / 1000} ms")
           }
 
           override def convertToGpu(): GpuScan = {
             val start = System.nanoTime()
             val t = convertedScan.get
-            logInfo(s"Iceberg convert scan for self took: ${
-              (System.nanoTime() - start) /
-                1000000
-            } ms")
+            logInfo(s"Iceberg convert scan for self took: ${(System.nanoTime() - start) /
+              1000} ms")
             t
           }
         },
         "Iceberg batch query scan",
-        ClassTag(cpuBatchQueryScanClass
-        )
+        ClassTag(cpuBatchQueryScanClass)
       ),
       new ScanRule[Scan](
         (a, conf, p, r) => new ScanMeta[Scan](a, conf, p, r) {
