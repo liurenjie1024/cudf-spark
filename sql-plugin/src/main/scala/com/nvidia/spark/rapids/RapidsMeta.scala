@@ -321,8 +321,8 @@ abstract class RapidsMeta[INPUT <: BASE, BASE, OUTPUT <: BASE](
       }
     }
 
-    GpuOverrides.logDuration(shouldLog = true, t => s"Tag for self took $t ms, input class " +
-      s"is: ${wrapped.getClass}, this class is: $getClass ") {
+    GpuOverrides.logDuration(shouldLog = true, t => s"Tag for self took $t ms, class " +
+      s"is: ${wrapped.getClass} ") {
       tagSelfForGpu()
     }
   }
@@ -1216,16 +1216,9 @@ abstract class BaseExprMeta[INPUT <: Expression](
       willNotWorkOnGpu(s"Cannot run on GPU. Is ConstantFolding excluded? Expression " +
         s"$wrapped is foldable and operates on non literals")
     }
-    GpuOverrides.logDuration(shouldLog = true, t => s"Rule check took $t ms") {
-      rule.getChecks.foreach(_.tag(this))
-    }
-    GpuOverrides.logDuration(shouldLog = true, t => s"checkExprForTimeZone took $t ms") {
-      checkExprForTimezone()
-    }
-
-    GpuOverrides.logDuration(shouldLog = true, t => "tagExprForGpu took $t ms") {
-      tagExprForGpu()
-    }
+    rule.getChecks.foreach(_.tag(this))
+    checkExprForTimezone()
+    tagExprForGpu()
   }
 
   /**
