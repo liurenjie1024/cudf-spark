@@ -56,7 +56,10 @@ case class XxHash64ExprMeta[HE <: HashExpression[Long]](
   extends ExprMeta(expr, conf, parent, rule) {
 
   override def tagExprForGpu(): Unit = {
-    val maxDepth = expr.children.map(c => XxHash64Utils.computeMaxStackSize(c.dataType)).max
+    val maxDepth = GpuOverrides.logDuration(shouldLog = true, t => s"Compute stack size took $t " +
+      s"ms") {
+      expr.children.map(c => XxHash64Utils.computeMaxStackSize(c.dataType)).max
+    }
     if (maxDepth > Hash.MAX_STACK_DEPTH) {
       willNotWorkOnGpu(
         s"The data type requires a stack depth of $maxDepth, " +
