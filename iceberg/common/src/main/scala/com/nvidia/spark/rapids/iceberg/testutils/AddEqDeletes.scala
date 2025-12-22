@@ -23,7 +23,7 @@ import scala.collection.JavaConverters._
 
 import com.nvidia.spark.rapids.Arm.withResource
 import com.nvidia.spark.rapids.fileio.iceberg.IcebergInputFile
-import com.nvidia.spark.rapids.iceberg.parquet.IcebergPartitionedFile
+import com.nvidia.spark.rapids.iceberg.parquet.{GpuIcebergParquetReader, IcebergPartitionedFile}
 import com.nvidia.spark.rapids.iceberg.testutils.AddEqDeletes.getParquetFileInfo
 import org.apache.hadoop.conf.Configuration
 import org.apache.iceberg._
@@ -57,13 +57,14 @@ class AddEqDeletes extends UDF3[String, String, String, Unit] with Logging {
    */
   override def call(warehouse: String, tableName: String, dataFile: String): Unit = {
     logDebug(s"Adding eq-deletes to $tableName from $dataFile")
+    val conf = new Configuration()
     val catalog = new HadoopCatalog()
-    catalog.setConf(new Configuration())
+    catalog.setConf(conf)
     catalog.initialize("spark_catalog", Map(CatalogProperties.WAREHOUSE_LOCATION -> warehouse)
       .asJava)
 
     val table = catalog.loadTable(TableIdentifier.parse(tableName))
-    val parquetFileInfo = getParquetFileInfo(table, dataFile)
+    val parquetFileInfo = getParquetFileInfo(table, parquetFile = dataFile, conf)
     logDebug("Parquet file info:\n" + parquetFileInfo)
 
     val parquetReader = {
@@ -142,29 +143,27 @@ object AddEqDeletes extends Logging {
     }
   }
 
-  def getParquetFileInfo(table: Table, parquetFile: String): ParquetFileInfo = {
-    val icebergPartitionedFile = IcebergPartitionedFile(new IcebergInputFile(table.io.newInputFile
-    (parquetFile)))
+  def getParquetFileInfo(table: Table, parquetFile: String, conf: Configuration): ParquetFileInfo = {
+    val icebergPartitionedFile = IcebergPartitionedFile(
+      new IcebergInputFile(table.io.newInputFile(parquetFile)))
 
     val tableSchema = table.schema
-    withResource(icebergPartitionedFile.newReader) { reader =>
-      logDebug(s"Reading eq delete parquet file $parquetFile, " +
-        s"schema:\n${reader.getFileMetaData.getSchema}")
-      val colNames = reader
-        .getFileMetaData
-        .getSchema
-        .getColumns
-        .asScala
-        .map(_.getPath.head)
-        .filterNot(MetadataColumns.isMetadataColumn)
-        .toSeq
+    val footer = GpuIcebergParquetReader.getParquetFooter(icebergPartitionedFile, conf)
+    val fileSchema = footer.getFileMetaData.getSchema
+    logDebug(s"Reading eq delete parquet file $parquetFile, " +
+      s"schema:\n$fileSchema")
+    val colNames = fileSchema
+      .getColumns
+      .asScala
+      .map(_.getPath.head)
+      .filterNot(MetadataColumns.isMetadataColumn)
+      .toSeq
 
-      val deleteSchema = tableSchema.select(colNames: _*)
-      val partitionSchema = Option(table.spec()).map(_.partitionType())
+    val deleteSchema = tableSchema.select(colNames: _*)
+    val partitionSchema = Option(table.spec()).map(_.partitionType())
 
-      ParquetFileInfo(reader.getFileMetaData.getSchema,
-        deleteSchema,
-        partitionSchema)
-    }
+    ParquetFileInfo(fileSchema,
+      deleteSchema,
+      partitionSchema)
   }
 }

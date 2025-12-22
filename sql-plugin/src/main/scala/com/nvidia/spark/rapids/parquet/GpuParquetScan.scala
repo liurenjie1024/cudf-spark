@@ -50,7 +50,6 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.io.IOUtils
 import org.apache.parquet.bytes.BytesUtils
-import org.apache.parquet.bytes.BytesUtils.readIntLittleEndian
 import org.apache.parquet.column.ColumnDescriptor
 import org.apache.parquet.filter2.predicate.FilterApi
 import org.apache.parquet.format.Util
@@ -468,7 +467,6 @@ private case class GpuParquetFileFilterHandler(
     @transient sqlConf: SQLConf,
     metrics: Map[String, GpuMetric]) extends Logging {
 
-  private val FOOTER_LENGTH_SIZE = 4
   private val isCaseSensitive = sqlConf.caseSensitiveAnalysis
   private val enableParquetFilterPushDown: Boolean = sqlConf.parquetFilterPushDown
   private val pushDownDate = sqlConf.parquetFilterPushDownDate
@@ -570,44 +568,8 @@ private case class GpuParquetFileFilterHandler(
   }
 
   private def readFooterBufUsingHadoop(fileIO: RapidsFileIO, filePath: Path): HostMemoryBuffer = {
-    val inputFile = fileIO.newInputFile(filePath)
-    // Much of this code came from the parquet_mr projects ParquetFileReader, and was modified
-    // to match our needs
-    val fileLen = inputFile.getLength
-    // MAGIC + data + footer + footerIndex + MAGIC
-    if (fileLen < MAGIC.length + FOOTER_LENGTH_SIZE + MAGIC.length) {
-      throw new RuntimeException(s"$filePath is not a Parquet file (too small length: $fileLen )")
-    }
-    val footerLengthIndex = fileLen - FOOTER_LENGTH_SIZE - MAGIC.length
-    withResource(inputFile.open()) { inputStream =>
-      NvtxRegistry.PARQUET_READ_FOOTER_BYTES {
-        inputStream.seek(footerLengthIndex)
-        val footerLength = readIntLittleEndian(inputStream)
-        val magic = new Array[Byte](MAGIC.length)
-        IOUtils.readFully(inputStream, magic, 0, magic.length)
-        val footerIndex = footerLengthIndex - footerLength
-        verifyParquetMagic(filePath, magic)
-        if (footerIndex < MAGIC.length || footerIndex >= footerLengthIndex) {
-          throw new RuntimeException(s"corrupted file: the footer index is not within " +
-            s"the file: $footerIndex")
-        }
-        val hmbLength = (fileLen - footerIndex).toInt
-        closeOnExcept(HostMemoryBuffer.allocate(hmbLength + MAGIC.length, false)) { outBuffer =>
-          val out = new HostMemoryOutputStream(outBuffer)
-          out.write(MAGIC)
-          inputStream.seek(footerIndex)
-          // read the footer til the end of the file
-          val tmpBuffer = new Array[Byte](4096)
-          var bytesLeft = hmbLength
-          while (bytesLeft > 0) {
-            val readLength = Math.min(bytesLeft, tmpBuffer.length)
-            IOUtils.readFully(inputStream, tmpBuffer, 0, readLength)
-            out.write(tmpBuffer, 0, readLength)
-            bytesLeft -= readLength
-          }
-          outBuffer
-        }
-      }
+    NvtxRegistry.PARQUET_READ_FOOTER_BYTES {
+      GpuParquetUtils.readFooterBuffer(fileIO.newInputFile(filePath), filePath.toString)
     }
   }
 

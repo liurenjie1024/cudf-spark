@@ -16,17 +16,19 @@
 
 package com.nvidia.spark.rapids.iceberg.parquet
 
-import java.io.{IOException, UncheckedIOException}
 import java.net.URI
 import java.util.Objects
 
 import scala.collection.JavaConverters._
 
-import com.nvidia.spark.rapids.{DateTimeRebaseCorrected, GpuMetric, ThreadPoolConfBuilder}
+import ai.rapids.cudf.HostMemoryBuffer
+import com.nvidia.spark.rapids.{DateTimeRebaseCorrected, GpuMetric, NoopMetric, ThreadPoolConfBuilder}
 import com.nvidia.spark.rapids.Arm.withResource
+import com.nvidia.spark.rapids.filecache.FileCache
 import com.nvidia.spark.rapids.fileio.iceberg.IcebergInputFile
 import com.nvidia.spark.rapids.iceberg.parquet.converter.FromIcebergShaded._
-import com.nvidia.spark.rapids.parquet.{GpuParquetUtils, ParquetFileInfoWithBlockMeta}
+import com.nvidia.spark.rapids.iceberg.parquet.converter.ToIcebergShaded
+import com.nvidia.spark.rapids.parquet.{GpuParquetUtils, HMBInputFile, ParquetFileInfoWithBlockMeta}
 import com.nvidia.spark.rapids.shims.PartitionedFileUtilsShim
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
@@ -38,10 +40,9 @@ import org.apache.iceberg.mapping.NameMapping
 import org.apache.iceberg.parquet._
 import org.apache.iceberg.shaded.org.apache.parquet.{HadoopReadOptions, ParquetReadOptions}
 import org.apache.iceberg.shaded.org.apache.parquet.hadoop.ParquetFileReader
-import org.apache.iceberg.shaded.org.apache.parquet.hadoop.metadata.{BlockMetaData => ShadedBlockMetaData}
+import org.apache.iceberg.shaded.org.apache.parquet.hadoop.metadata.{ParquetMetadata, BlockMetaData => ShadedBlockMetaData}
 import org.apache.iceberg.shaded.org.apache.parquet.schema.{MessageType => ShadedMessageType}
 import org.apache.parquet.hadoop.metadata.BlockMetaData
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.PartitionedFile
@@ -58,16 +59,6 @@ case class IcebergPartitionedFile(
 
   def parquetReadOptions: ParquetReadOptions = {
     GpuIcebergParquetReader.buildReaderOptions(file.getDelegate, split)
-  }
-
-  def newReader: ParquetFileReader = {
-    try {
-      ParquetFileReader.open(GpuParquetIO.file(file.getDelegate), parquetReadOptions)
-    } catch {
-      case e: IOException =>
-        throw new UncheckedIOException(s"Failed to newInputFile Parquet file: " +
-          s"${file.getDelegate.location()}", e)
-    }
   }
 
   def sparkPartitionedFile: PartitionedFile = {
@@ -193,16 +184,22 @@ trait GpuIcebergParquetReader extends Iterator[ColumnarBatch] with AutoCloseable
       conf.caseSensitive)
   }
 
+  @scala.annotation.nowarn(
+    "msg=method open in class ParquetFileReader is deprecated"
+  )
   def filterParquetBlocks(file: IcebergPartitionedFile,
       requiredSchema: Schema): ParquetFileInfoWithBlockMeta = {
-    withResource(file.newReader) { reader =>
-      val fileSchema = reader.getFileMetaData.getSchema
+    val footer = GpuIcebergParquetReader.getParquetFooter(file, conf.conf, conf.metrics)
+    // Create ParquetFileReader using the cached footer to avoid re-reading it
+    val reader = ParquetFileReader.open(conf.conf, file.path, footer)
+    withResource(reader) { reader =>
+      val fileSchema = footer.getFileMetaData.getSchema
 
       val rowGroupFirstRowIndices = new Array[Long](reader.getRowGroups.size())
       var accumulatedRowCount = 0L
       for (i <- 0 until reader.getRowGroups.size()) {
         rowGroupFirstRowIndices(i) = accumulatedRowCount
-        accumulatedRowCount += reader.getRowGroups.get(i).getRowCount
+        accumulatedRowCount += footer.getBlocks.get(i).getRowCount
       }
       val (typeWithIds, fileReadSchema) = projectSchema(fileSchema, requiredSchema)
       val filteredBlocks = filterRowGroups(reader, requiredSchema, typeWithIds, file.filter)
@@ -251,5 +248,63 @@ object GpuIcebergParquetReader {
       optionsBuilder = optionsBuilder.withRange(start, start + length)
     }
     optionsBuilder.build
+  }
+
+  /**
+   * Get the footer of the parquet file using FileCache to avoid repeated reads.
+   *
+   * @param file    The IcebergPartitionedFile to read the footer from
+   * @param conf    Hadoop configuration for FileCache
+   * @param metrics Optional metrics to track cache hits/misses
+   * @return the ParquetMetadata (footer) of the file
+   */
+  def getParquetFooter(file: IcebergPartitionedFile,
+      conf: Configuration,
+      metrics: Map[String, GpuMetric] = Map.empty): ParquetMetadata = {
+    val filePathString = file.path.toString
+    val options = buildReaderOptions(file.file.getDelegate, file.split)
+
+    FileCache.get.getFooter(filePathString, conf).map { hmb =>
+      withResource(hmb) { _ =>
+        metrics.getOrElse(GpuMetric.FILECACHE_FOOTER_HITS, NoopMetric) += 1
+        metrics.getOrElse(GpuMetric.FILECACHE_FOOTER_HITS_SIZE, NoopMetric) += hmb.getLength
+        readFooterFromBuffer(hmb, options)
+      }
+    }.getOrElse {
+      metrics.getOrElse(GpuMetric.FILECACHE_FOOTER_MISSES, NoopMetric) += 1
+      // footer was not cached, so try to cache it
+      // If we get a filecache token then we can complete the caching by providing the data.
+      // If something goes wrong before completing the caching then the token must be canceled.
+      // If we do not get a token then we should not cache this data.
+      val cacheToken = FileCache.get.startFooterCache(filePathString, conf)
+      cacheToken.map { token =>
+        var needTokenCancel = true
+        try {
+          withResource(GpuParquetUtils.readFooterBuffer(file.file, filePathString)) { hmb =>
+            metrics.getOrElse(GpuMetric.FILECACHE_FOOTER_MISSES_SIZE, NoopMetric) += hmb.getLength
+            token.complete(hmb.slice(0, hmb.getLength))
+            needTokenCancel = false
+            readFooterFromBuffer(hmb, options)
+          }
+        } finally {
+          if (needTokenCancel) {
+            token.cancel()
+          }
+        }
+      }.getOrElse {
+        withResource(GpuParquetUtils.readFooterBuffer(file.file, filePathString)) { hmb =>
+          metrics.getOrElse(GpuMetric.FILECACHE_FOOTER_MISSES_SIZE, NoopMetric) += hmb.getLength
+          readFooterFromBuffer(hmb, options)
+        }
+      }
+    }
+  }
+
+  private def readFooterFromBuffer(hmb: HostMemoryBuffer,
+      options: ParquetReadOptions): ParquetMetadata = {
+    val inputFile = ToIcebergShaded.shade(new HMBInputFile(hmb))
+    withResource(inputFile.newStream()) { stream =>
+      ParquetFileReader.readFooter(inputFile, options, stream)
+    }
   }
 }
