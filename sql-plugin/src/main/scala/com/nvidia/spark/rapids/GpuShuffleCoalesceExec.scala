@@ -290,6 +290,7 @@ class KudoTableOperator(kudo: Option[KudoSerializer], readOption: CoalesceReadOp
     } else {
       // "lock" all input tables in memory before merge
       withResource(columns.safeMap(_.spillableKudoTable.makeKudoTable)) { kudoTables =>
+        kudoTables.foreach(_.verifyChecksum())
         val result = kudo.get.mergeOnHost(kudoTables, buildMergeOptions())
         KudoHostMergeResultWrapper(result)
       }
