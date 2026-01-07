@@ -1172,7 +1172,7 @@ class DiskHandle private(
     val blockId: BlockId,
     val offset: Long,
     val sizeInBytes: Long)
-  extends StoreHandle {
+  extends StoreHandle with Logging {
 
   override val approxSizeInBytes: Long = sizeInBytes
 
@@ -1212,7 +1212,7 @@ class DiskHandle private(
       withResource(new HostMemoryOutputStream(mb)) { out =>
         val len = IOUtils.copy(in, out)
         if (len != mb.getLength) {
-          throw new IllegalStateException(s"Expected to copy ${mb.getLength} bytes, but copied $len bytes")
+          logError(s"Expected to copy ${mb.getLength} bytes, but copied $len bytes")
         }
       }
     }

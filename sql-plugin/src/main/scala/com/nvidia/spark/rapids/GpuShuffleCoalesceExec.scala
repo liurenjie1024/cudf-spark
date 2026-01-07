@@ -290,7 +290,17 @@ class KudoTableOperator(kudo: Option[KudoSerializer], readOption: CoalesceReadOp
     } else {
       // "lock" all input tables in memory before merge
       withResource(columns.safeMap(_.spillableKudoTable.makeKudoTable)) { kudoTables =>
-        kudoTables.foreach(_.verifyChecksum())
+        // Verify checksum for each KudoTable
+        kudoTables.zipWithIndex.foreach { case (table, idx) =>
+          if (!table.verifyChecksum()) {
+            throw new IllegalStateException(
+              s"Checksum verification failed for KudoTable at index $idx " +
+                s"(task $taskIdentifier): header=${
+                  Option(table.getHeader).map(_.toString).getOrElse("null")
+                }"
+            )
+          }
+        }
         val result = kudo.get.mergeOnHost(kudoTables, buildMergeOptions())
         KudoHostMergeResultWrapper(result)
       }
