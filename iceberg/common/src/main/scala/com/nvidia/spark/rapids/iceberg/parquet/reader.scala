@@ -43,6 +43,7 @@ import org.apache.iceberg.shaded.org.apache.parquet.hadoop.ParquetFileReader
 import org.apache.iceberg.shaded.org.apache.parquet.hadoop.metadata.{ParquetMetadata, BlockMetaData => ShadedBlockMetaData}
 import org.apache.iceberg.shaded.org.apache.parquet.schema.{MessageType => ShadedMessageType}
 import org.apache.parquet.hadoop.metadata.BlockMetaData
+
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.PartitionedFile
@@ -56,10 +57,6 @@ case class IcebergPartitionedFile(
 
   lazy val urlEncodedPath: String = new Path(file.getDelegate.location()).toUri.toString
   lazy val path: Path = new Path(new URI(urlEncodedPath))
-
-  def parquetReadOptions: ParquetReadOptions = {
-    GpuIcebergParquetReader.buildReaderOptions(file.getDelegate, split)
-  }
 
   def sparkPartitionedFile: PartitionedFile = {
     split match {
