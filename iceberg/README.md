@@ -36,3 +36,37 @@ that is picked up by the Iceberg submodules via the Maven build helper plugin.
 | `common/src/main/scala`           | Scala code shared across all versions    |
 | `common/src/main/java`            | Java code shared across all versions     |
 | `common/src/main/spark35x/java`   | Java code for Spark 3.5.x only           |
+
+## Per-Session Read Overrides
+
+Spark RAPIDS prefers larger Parquet read splits than CPU Spark. For Iceberg tables, the split
+size is governed by the table properties `read.split.target-size` and
+`read.split.planning-lookback`, not by `spark.sql.files.maxPartitionBytes`. To override these
+at the session level — without editing the iceberg table metadata — register
+`RapidsIcebergSparkSessionCatalog` in place of Iceberg's `SparkSessionCatalog`:
+
+```
+spark.sql.catalog.spark_catalog = com.nvidia.spark.rapids.iceberg.spark.RapidsIcebergSparkSessionCatalog
+spark.sql.catalog.spark_catalog.type = hive
+```
+
+Then provide per-table overrides keyed by the fully qualified table name
+(`<catalog>.<namespace>.<table>`):
+
+```
+spark.rapids.iceberg.tables.spark_catalog.db.events.split-size     = 2147483648
+spark.rapids.iceberg.tables.spark_catalog.db.events.lookback       = 1000
+spark.rapids.iceberg.tables.spark_catalog.db.events.file-open-cost = 4194304
+```
+
+Recognized option suffixes (matching Iceberg's `SparkReadOptions`):
+
+| Suffix           | Iceberg table property         |
+|------------------|--------------------------------|
+| `split-size`     | `read.split.target-size`       |
+| `lookback`       | `read.split.planning-lookback` |
+| `file-open-cost` | `read.split.open-file-cost`   |
+
+Each table that needs an override must list it explicitly — there is no implicit global default.
+Options supplied directly via `DataFrameReader.option(...)` always take precedence over the
+session-level overrides.
